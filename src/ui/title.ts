@@ -37,8 +37,6 @@ export function showTitle(): void {
           <button class="btn btn--big" type="button" data-dial>${t('Dial in')}</button>
           <button class="btn btn--ghost" type="button" data-daily title="One seeded shift everyone plays today, scored on the board">${t("Tonight's shift")}</button>
           <button class="btn btn--ghost" type="button" data-weekly title="One seeded shift for the whole week">${t("This week's shift")}</button>
-          <button class="btn btn--ghost" type="button" data-daily title="One seeded shift everyone plays today, scored on the board">${t("Tonight's shift")}</button>
-          <button class="btn btn--ghost" type="button" data-weekly title="One seeded shift for the whole week">${t("This week's shift")}</button>
           <button class="btn btn--ghost" type="button" data-friends>${t('Play with friends')}</button>
           <button class="btn btn--ghost" type="button" data-hall>${t('Hall of fame')}</button>
           <button class="btn btn--ghost" type="button" data-how>${t('How it works')}</button>
@@ -59,8 +57,6 @@ export function showTitle(): void {
     el.querySelector('[data-dial]')!.addEventListener('click', () => { sfx.unlock(); newRun(); });
     el.querySelector('[data-continue]')!.addEventListener('click', () => { sfx.unlock(); hideTitle(); void startRun({ resume: true }); });
     el.querySelector('[data-hall]')!.addEventListener('click', () => openHall());
-    el.querySelector('[data-daily]')!.addEventListener('click', () => { sfx.unlock(); hideTitle(); startChallenge('daily'); });
-    el.querySelector('[data-weekly]')!.addEventListener('click', () => { sfx.unlock(); hideTitle(); startChallenge('weekly'); });
     el.querySelector('[data-daily]')!.addEventListener('click', () => { sfx.unlock(); hideTitle(); startChallenge('daily'); });
     el.querySelector('[data-weekly]')!.addEventListener('click', () => { sfx.unlock(); hideTitle(); startChallenge('weekly'); });
     el.querySelector('[data-settings]')!.addEventListener('click', () => openSettings());

@@ -89,6 +89,7 @@ main { min-height: 100dvh; position: relative; }
 }
 .title__word em { font-style: normal; color: var(--amber); }
 .title__tag { font-size: var(--step-1); color: oklch(85% 0.02 250); max-inline-size: 36ch; margin-inline: auto; text-wrap: balance; }
+.btn[hidden] { display: none; }
 .title__actions { display: flex; flex-wrap: wrap; gap: var(--space-xs); justify-content: center; align-items: center; }
 .title__foot { position: absolute; left: 0; right: 0; bottom: max(1rem, env(safe-area-inset-bottom)); display: flex; justify-content: space-between; gap: 1rem; padding: 0 var(--space-m); font-size: var(--step--1); color: oklch(70% 0.02 250); flex-wrap: wrap; }
 .title__foot label { display: inline-flex; gap: .5rem; align-items: center; min-height: 44px; cursor: pointer; }

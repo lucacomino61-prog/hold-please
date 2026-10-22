@@ -9,6 +9,10 @@ One deliberate difference: the callers are creatures, machines, ghosts and plane
 products are impossible (acres of the Moon, a warranty on the Sun, a gravity subscription).
 Nothing in the game explains a real scheme. The loop is the same.
 
+Live at **https://hold-please.pages.dev** (Cloudflare Pages); source at
+**https://github.com/lucacomino61-prog/hold-please** (public). The co-op server and the brain proxy are
+Workers on the same account (`docs/DEPLOY.md`).
+
 ## Run it
 
 ```bash
@@ -476,9 +480,12 @@ off (reload).
   drawn busts stay only for invented callers. One helper renders all three everywhere (`portraitHTML`
   in `src/os/portrait.ts`): the Phone, the ring card, Zoomy, the codex, the Creator.
 - **The photo is never shown as itself.** `src/os/toon.ts` draws an original cartoon from it in the
-  browser: a square cut around the face, cel shading (the luminance snaps to six bands, the hue stays),
-  ink outlines where the picture has edges (Sobel), a light halftone in the darkest band, a vignette
-  and a flat border. The face stays recognisable; the picture is new. Cartoons are cached for the
+  browser. The face is found by skin tone (every square window on a 24×24 skin-density grid is scored:
+  dense inside, little skin around, large, high and central win) and cut tight; the picture is flattened
+  into painted patches (a Kuwahara filter on summed-area tables), reduced to a twelve-colour palette
+  (farthest-point seeds, k-means), de-speckled with two majority passes, inked along the borders between
+  colours that differ in tone, and the bust is set inside an egg on a flat backdrop in the caller's own
+  hue with comic dots and a light rim. The face stays recognisable; the picture is new. Cartoons are cached for the
   session, drawn ahead of the first ring for every caller with a photo, and swapped into any portrait
   the moment they are ready (a MutationObserver watches the OS). A photo the browser cannot read, even
   after one retry, becomes an initials tile. The credit reads "Cartoon drawn from a photo: …".
