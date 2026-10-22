@@ -1,0 +1,24 @@
+{
+  "name": "hold-please",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 3730 --strictPort",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 3731 --strictPort",
+    "check": "tsc --noEmit",
+    "brain": "npx wrangler dev -c brain/wrangler.jsonc --port 8788",
+    "brain:deploy": "npx wrangler deploy -c brain/wrangler.jsonc --var ALLOWED_ORIGIN:https://hold-please.pages.dev",
+    "server": "npx wrangler dev -c server/wrangler.jsonc --port 8790 --ip 127.0.0.1",
+    "server:check": "npx wrangler types -c server/wrangler.jsonc server/worker-configuration.d.ts && tsc -p server/tsconfig.json"
+  },
+  "dependencies": {
+    "three": "0.186.1"
+  },
+  "devDependencies": {
+    "@types/three": "0.186.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.0"
+  }
+}

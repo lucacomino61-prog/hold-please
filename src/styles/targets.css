@@ -1,0 +1,21 @@
+/* Daily targets: the Targets window, the whiteboard list, the review slide */
+.targets__wrap { padding: .8rem .9rem; display: grid; gap: .6rem; }
+.targets__intro { margin: 0; font-size: .8rem; color: oklch(45% .03 250); }
+.targets { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+.target { display: grid; grid-template-columns: 1.6rem 1fr auto; align-items: center; gap: .6rem; padding: .5rem .65rem; border-radius: 8px; background: oklch(0 0 0 / .05); }
+.target--done { background: oklch(90% .12 150 / .4); }
+.target__tick { width: 1.4rem; height: 1.4rem; border-radius: 50%; border: 2px solid oklch(0 0 0 / .25); display: grid; place-items: center; font-weight: 800; font-size: .8rem; }
+.target--done .target__tick { background: #1f9d55; border-color: #1f9d55; color: #fff; }
+.target--missed .target__tick { color: #c62828; border-color: #c62828; }
+.target__body b { font-size: .9rem; }
+.target__bar { height: 4px; border-radius: 2px; background: oklch(0 0 0 / .12); margin-top: .3rem; overflow: hidden; }
+.target__bar i { display: block; height: 100%; background: #f2a93b; }
+.target--done .target__bar i { background: #1f9d55; }
+.target__reward { font-size: .8rem; font-weight: 700; color: #1f9d55; white-space: nowrap; }
+.target--missed .target__reward { color: #c62828; }
+.review__slide .targets { margin: .4rem 0 .6rem; }
+.review__slide .target { background: oklch(0 0 0 / .07); font-style: normal; }
+.whiteboard .wb-targets { margin-top: .5rem; font-size: var(--step-0); }
+.whiteboard .wb-targets ul { padding-left: 1.4rem; margin: .2rem 0 0; }
+.whiteboard .wb-targets li { list-style: '☐ '; }
+.whiteboard .wb-reward { color: #1f9d55; font-weight: 700; }

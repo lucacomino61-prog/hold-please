@@ -1,0 +1,9 @@
+# copy to brain/.dev.vars (gitignored) and paste your own keys after the = signs, no quotes. Every line is optional:
+# the free Workers AI brain needs none of them. The proxy tries Workers AI first, then these in the order of
+# CHAT_PROVIDERS in wrangler.jsonc, then Claude; a missing key just skips that provider.
+GROQ_API_KEY=
+OPENROUTER_API_KEY=
+GEMINI_API_KEY=
+ANTHROPIC_API_KEY=
+# local dev only: leave empty so the proxy answers any origin (the deployed Worker gets the Pages origin as a var)
+ALLOWED_ORIGIN=

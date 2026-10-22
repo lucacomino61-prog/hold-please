@@ -1,0 +1,19 @@
+// Hold Please's small server: one Durable Object per room (a four-letter code), where up to eight friends share the
+// TEAM total, the quota, the day number and the shift clock. The game itself stays a static site; without this
+// server it plays solo exactly as before.
+// Local: npm run server  (= npx wrangler dev -c server/wrangler.jsonc --port 8790 --ip 127.0.0.1; .dev.vars beside this file)
+// Deploy (Luca only, when he says so): npx wrangler deploy -c server/wrangler.jsonc — then add the live site's origin to
+// ORIGINS below and build the site with VITE_HP_SERVER=https://<worker>.workers.dev (or set the server in the lobby panel).
+{
+  "name": "hold-please-server",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "observability": { "enabled": true },
+  "durable_objects": {
+    "bindings": [{ "name": "ROOMS", "class_name": "Room" }, { "name": "LOBBY", "class_name": "Lobby" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }, { "tag": "v2", "new_sqlite_classes": ["Lobby"] }],
+  "vars": {
+    "ORIGINS": "https://hold-please.pages.dev,http://127.0.0.1:3730,http://localhost:3730,http://127.0.0.1:3731,http://localhost:3731"
+  }
+}

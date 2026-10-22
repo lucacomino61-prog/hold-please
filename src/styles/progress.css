@@ -1,0 +1,39 @@
+/* Progression: the Continue button, the rank chip, badges, the hall of fame */
+.title__continue { display: grid; gap: .1rem; text-align: left; line-height: 1.15; }
+.title__continue small { font-size: .72rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; opacity: .8; }
+.hud__rank { font-size: .72rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #ffd166; }
+.badge { display: inline-flex; align-items: center; gap: .25rem; padding: .2rem .55rem; border-radius: 999px; background: #ffe590; color: #3b2d00; font-size: .78rem; font-weight: 700; border: 1px solid #e2bd3c; }
+.sheet .badges-row { display: flex; flex-wrap: wrap; gap: .4rem; margin: .4rem 0 .2rem; }
+.sheet .rank-line { margin: .3rem 0 .6rem; padding: .6rem .8rem; border-radius: 10px; background: oklch(95% .06 85); border: 1px solid oklch(85% .08 85); }
+.sheet .rank-line b { color: #7a4a00; }
+.panel--wide { max-width: min(56rem, calc(100vw - 2rem)); }
+.hall__table { width: 100%; border-collapse: collapse; font-size: .9rem; margin: .4rem 0 .8rem; }
+.hall__table th { text-align: left; font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3, #6b6b6b); padding: .3rem .5rem; border-bottom: 2px solid oklch(0 0 0 / .15); }
+.hall__table td { padding: .4rem .5rem; border-bottom: 1px solid oklch(0 0 0 / .08); }
+.hall__table .rank { font-weight: 800; }
+.hall__live { margin-left: .4rem; font-size: .7rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #1f9d55; }
+.hall__when { color: var(--ink-3, #6b6b6b); white-space: nowrap; }
+.badges { display: grid; gap: .5rem; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); }
+.badge-card { display: flex; gap: .6rem; align-items: flex-start; padding: .55rem .7rem; border-radius: 10px; border: 1px solid oklch(0 0 0 / .12); background: oklch(0 0 0 / .03); opacity: .55; }
+.badge-card--got { opacity: 1; background: #fff6d6; border-color: #e2bd3c; }
+.badge-card__star { font-size: 1.2rem; line-height: 1; color: #c9971c; }
+.badge-card b { font-size: .9rem; }
+.phone__hold { margin-top: .25rem; font-size: .78rem; font-weight: 700; color: #ffd166; }
+/* two lines: the call on hold, the transfer menu */
+.phone__held { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: .5rem .6rem; padding: .45rem .75rem; background: oklch(30% .06 85); border-bottom: 1px solid oklch(0 0 0 / .3); }
+.phone__held-label { font-size: .7rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #ffd166; }
+.phone__held-name { font-size: .85rem; color: #fff; }
+.phone__held-bar { grid-column: 1 / 3; height: 4px; border-radius: 2px; background: oklch(0 0 0 / .35); overflow: hidden; }
+.phone__held-bar i { display: block; height: 100%; width: 100%; background: #ffd166; transform-origin: left; transition: transform .4s linear; }
+.phone__held .phone__swap { grid-column: 3; grid-row: 1 / 3; padding: .35rem .7rem; font-size: .8rem; }
+.phone__holdbtn, .phone__xfer { padding: .5rem .7rem; font-size: .82rem; --btn-bg: oklch(35% .04 250); --btn-ink: #fff; }
+.phone__transfer { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; padding: .5rem .75rem .7rem; font-size: .8rem; color: #cfd6e4; }
+.phone__transfer .btn { padding: .35rem .7rem; font-size: .8rem; }
+.whiteboard .wb-mutator { margin: .4rem 0 .2rem; padding: .45rem .6rem; border-radius: 8px; background: #fff3c4; border: 1px dashed #c9971c; font-size: var(--step-0); }
+/* the tsunami: water rising from the floor, sandbags to stack */
+.wave-ev { position: fixed; inset: 0; z-index: 70; pointer-events: none; }
+.wave-ev__water { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: linear-gradient(to top, oklch(55% .15 240 / .85), oklch(70% .12 220 / .55)); border-top: 6px solid oklch(90% .05 220 / .8); }
+.wave-ev__card { position: absolute; top: 2rem; left: 50%; transform: translateX(-50%); min-width: 22rem; padding: .9rem 1.1rem; border-radius: 12px; background: #0e1a2b; color: #fff; display: grid; gap: .4rem; box-shadow: var(--shadow-2); pointer-events: auto; }
+.wave-ev__card b { font-family: var(--display); font-size: 1.6rem; color: #6fd1ff; letter-spacing: .04em; }
+.sandbag { position: absolute; width: 56px; height: 56px; border-radius: 12px; border: 3px solid #c9971c; background: #e2bd3c; font-size: 1.6rem; cursor: pointer; pointer-events: auto; box-shadow: var(--shadow-2); }
+.sandbag:hover { transform: scale(1.08); }
