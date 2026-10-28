@@ -4,7 +4,7 @@ import { bus, saveSettings, settings, state, type Line } from '../../game/state'
 import { answerCall, currentCall, declineCall, hangUp, heldCall, holdCall, sendLine, swapCall, transferCall, type ActiveCall } from '../../game/calls';
 import { coop } from '../../net/coop';
 import type { Caller } from '../../game/brain/types';
-import { canListen, isListening, listenOnce, stopListening } from '../../game/speech';
+import { canListen, isListening, listenFailureText, listenOnce, stopListening } from '../../game/speech';
 import { icon } from '../icons';
 import { mutatorHideTrust } from '../../game/mutators';
 import { portraitHTML } from '../portrait';
@@ -127,7 +127,7 @@ export function openPhone(): Win {
 
     // press-to-talk
     const mic = ui.mic;
-    if (!canListen()) { mic.disabled = true; mic.title = 'Voice input needs Chrome or Edge'; }
+    if (!canListen()) { mic.disabled = true; mic.title = 'No speech recognition in this browser, and the AI one is not reachable'; }
     const start = async () => {
       if (!canListen() || isListening()) return;
       if (!settings.voiceIn) { settings.voiceIn = true; }
@@ -136,7 +136,7 @@ export function openPhone(): Win {
       try {
         const text = await listenOnce((interim) => { ui!.listenBox.textContent = interim || 'Listening…'; });
         if (text) { ui!.input.value = ''; await sendLine(text); }
-      } catch { ui!.status.textContent = 'The microphone did not work. Typing still does.'; }
+      } catch (e) { ui!.status.textContent = listenFailureText(e); }
       ui!.listenBox.hidden = true;
       ui!.listenBox.textContent = 'Listening…';
       mic.setAttribute('aria-pressed', 'false');

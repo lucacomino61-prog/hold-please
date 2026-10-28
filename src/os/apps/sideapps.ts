@@ -14,6 +14,8 @@ import { openWindow } from '../windows';
 import { toast } from '../../ui/toast';
 import { coop } from '../../net/coop';
 import { room } from '../../net/room';
+import { t } from '../../i18n';
+import { familySafe } from '../../game/modes';
 
 function esc(s: string): string { return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!)); }
 
@@ -52,8 +54,8 @@ const GOODS: Record<string, Item[]> = {
 
 registerApp({ id: 'shop', name: 'Swindlr Market', color: '#f08a24', glyph: 'shop', kind: 'core', pinned: true, open: () => {
   openWindow({ id: 'shop', title: 'Swindlr Market', glyph: icon('shop'), color: '#f08a24', w: 760, h: 640 }, (body) => {
-    body.innerHTML = `<div class="shop"><div class="shop__head"><b>SWINDLR</b><span class="pill">MARKET</span><span class="bal">Your money: <b class="tabular"></b></span></div>
-      <div class="shop__tabs" role="tablist"><button class="shop__tab" role="tab" data-tab="scams" aria-selected="true">Scams</button><button class="shop__tab" role="tab" data-tab="business">Business apps</button><button class="shop__tab" role="tab" data-tab="games">Games &amp; software</button><button class="shop__tab" role="tab" data-tab="goods">Physical goods</button></div>
+    body.innerHTML = `<div class="shop"><div class="shop__head"><b>SWINDLR</b><span class="pill">MARKET</span><span class="bal">${t('Your money:')} <b class="tabular"></b></span></div>
+      <div class="shop__tabs" role="tablist"><button class="shop__tab" role="tab" data-tab="scams" aria-selected="true">${t('Scams')}</button><button class="shop__tab" role="tab" data-tab="business">${t('Business apps')}</button><button class="shop__tab" role="tab" data-tab="games">${esc(t('Games & software'))}</button><button class="shop__tab" role="tab" data-tab="goods">${t('Physical goods')}</button></div>
       <div class="shop__grid" role="tabpanel"></div></div>`;
     const bal = body.querySelector<HTMLElement>('.bal b')!;
     const grid = body.querySelector<HTMLElement>('.shop__grid')!;
@@ -62,21 +64,21 @@ registerApp({ id: 'shop', name: 'Swindlr Market', color: '#f08a24', glyph: 'shop
     const render = () => {
       money();
       grid.innerHTML = '';
-      const items: (Item & { owned?: boolean })[] = (tab === 'scams'
-        ? SCAMS.map((s) => ({ id: 'scam:' + s.id, name: s.name, blurb: s.tagline, price: s.price, color: s.color, glyph: s.glyph, owned: state.owned.has(s.id) }))
+      const items: (Item & { owned?: boolean; fromDay?: number })[] = (tab === 'scams'
+        ? SCAMS.map((s) => ({ id: 'scam:' + s.id, name: s.name, blurb: s.tagline, price: s.price, color: s.color, glyph: s.glyph, owned: state.owned.has(s.id), fromDay: s.minDay && state.day < s.minDay ? s.minDay : 0 }))
         : GOODS[tab].map((g) => ({ ...g, owned: (!!g.once && state.inventory.includes(g.id)) || (!!g.cosmetic && state.cosmetics.includes(g.cosmetic)) }))).map((it) => ({ ...it, price: Math.round(it.price * mutatorPrice() / 10) * 10 }));
       for (const it of items) {
         const card = document.createElement('div');
         card.className = 'item';
-        const can = state.personal >= it.price;
-        card.innerHTML = `<div class="item__art" style="background:${it.color}">${icon(it.glyph)}</div><h3>${esc(it.name)}</h3><p>${esc(it.blurb)}</p><div class="price">${it.price === 0 ? 'Included' : fmt(it.price)}</div>
-          <button class="buy ${it.owned ? 'owned' : ''}" type="button" ${it.owned || (!can && it.price > 0) ? 'disabled' : ''}>${it.owned ? 'Owned' : can || it.price === 0 ? 'Hold to buy' : `Need ${fmt(it.price - state.personal)}`}</button>`;
+        const can = state.personal >= it.price && !it.fromDay;
+        card.innerHTML = `<div class="item__art" style="background:${it.color}">${icon(it.glyph)}</div><h3>${esc(it.name)}</h3><p>${esc(it.blurb)}</p><div class="price">${it.price === 0 ? t('Included') : fmt(it.price)}</div>
+          <button class="buy ${it.owned ? 'owned' : ''}" type="button" ${it.owned || it.fromDay || (!can && it.price > 0) ? 'disabled' : ''}>${it.owned ? t('Owned') : it.fromDay ? t('From day {d}', { d: it.fromDay }) : can || it.price === 0 ? t('Hold to buy') : t('Need {x}', { x: fmt(it.price - state.personal) })}</button>`;
         const btn = card.querySelector<HTMLButtonElement>('.buy')!;
         let hold: ReturnType<typeof setInterval> | undefined, p = 0;
         const stop = () => { clearInterval(hold); p = 0; btn.style.setProperty('--hold', '0%'); };
         const buy = () => {
           stop();
-          if (it.price > 0 && !spend(it.price)) { toast('Not enough money.', 'danger'); return; }
+          if (it.price > 0 && !spend(it.price)) { toast(t('Not enough money.'), 'danger'); return; }
           sfx.cash();
           if (it.id.startsWith('scam:')) { state.owned.add(it.id.slice(5) as typeof SCAMS[number]['id']); bus.emit('unlock'); refreshDesktop(); toast(`${it.name} is on your desktop.`, 'money'); }
           else if ((it as Item).cosmetic) { state.cosmetics.push((it as Item).cosmetic!); bus.emit('cosmetic', (it as Item).cosmetic); toast(`${it.name} is on your desk. Stand up and have a look.`, 'money', 4000); }
@@ -128,7 +130,7 @@ registerApp({ id: 'pigeon', name: 'Pigeon', color: '#5a3a8a', glyph: 'pigeon', k
     };
     body.querySelector('[data-nitro]')!.addEventListener('click', () => { msgs.insertAdjacentHTML('beforeend', gift()); msgs.querySelectorAll('[data-claim]').forEach((b) => b.addEventListener('click', () => { startVirus('pigeon'); render(); })); msgs.scrollTop = msgs.scrollHeight; sfx.click(); });
     body.querySelectorAll<HTMLButtonElement>('.pigeon__contact').forEach((b) => b.addEventListener('click', () => { body.querySelectorAll('.pigeon__contact').forEach((x) => x.setAttribute('aria-selected', 'false')); b.setAttribute('aria-selected', 'true'); who = b.querySelector('b')!.textContent!; render(); }));
-    body.querySelector('form')!.addEventListener('submit', (e) => { e.preventDefault(); const input = body.querySelector<HTMLInputElement>('.pigeon__form input')!; const t = input.value.trim(); if (!t) return; input.value = ''; if (who === 'Room') { room.send({ t: 'note', sub: 'chat', text: t.slice(0, 120) }); roomLog.push(`<b>You</b> ${esc(t)}`); render(); return; } msgs.insertAdjacentHTML('beforeend', `<div class="msg msg--me">${esc(t)}</div>`); setTimeout(() => { msgs.insertAdjacentHTML('beforeend', `<div class="msg">${who === 'Mr. Krull' ? 'BACK TO WORK.' : REPLIES[Math.floor(Math.random() * REPLIES.length)]}</div>`); msgs.scrollTop = msgs.scrollHeight; }, 900); msgs.scrollTop = msgs.scrollHeight; });
+    body.querySelector('form')!.addEventListener('submit', (e) => { e.preventDefault(); const input = body.querySelector<HTMLInputElement>('.pigeon__form input')!; const t = input.value.trim(); if (!t) return; input.value = ''; if (who === 'Room') { room.send({ t: 'note', sub: 'chat', text: t.slice(0, 120) }); roomLog.push(`<b>You</b> ${esc(familySafe(t))}`); render(); return; } msgs.insertAdjacentHTML('beforeend', `<div class="msg msg--me">${esc(familySafe(t))}</div>`); setTimeout(() => { msgs.insertAdjacentHTML('beforeend', `<div class="msg">${who === 'Mr. Krull' ? 'BACK TO WORK.' : REPLIES[Math.floor(Math.random() * REPLIES.length)]}</div>`); msgs.scrollTop = msgs.scrollHeight; }, 900); msgs.scrollTop = msgs.scrollHeight; });
     render();
   });
 } });
@@ -156,6 +158,8 @@ registerApp({ id: 'surf', name: 'Surf', color: '#4ab3e0', glyph: 'surf', kind: '
 
 // ---------------- Playbook ----------------
 const ASK_HINTS: Record<string, string> = {
+  stars: '<p>Pitch the registry, then ask <i>“What does your star look like?”</i> Keep them talking: each reply buys one reading. Click the star, then Register.</p>',
+  courier: '<p>Pitch the crate of penguins, then ask <i>“What password do you want on the crate?”</i> Book it in the Courier app. When Customs calls, give them that password there.</p>',
   moon: '"Which crater would you like?" — then type the crater into Moon Acres.',
   sun: '"Can you read me the serial number on the Sun?" — type it into Sun Warranty.',
   gravity: '"Choose a PIN for your gravity account." — type their word into Gravity Plan.',

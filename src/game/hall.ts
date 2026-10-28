@@ -34,12 +34,14 @@ export function recordRun(fired: boolean, won = false): void {
   const i = list.findIndex((x) => x.key === e.key);
   if (i >= 0) list[i] = e; else list.push(e);
   write(HALL_KEY, list.sort((a, b) => b.days - a.days || b.team - a.team).slice(0, 30));
+  bus.emit('save:written', 0);
 }
 
 export interface Achievement { id: string; name: string; blurb: string }
 export const ACHIEVEMENTS: Achievement[] = [
   { id: 'first-sale', name: 'First blood', blurb: 'Close your first sale.' },
   { id: 'double', name: 'Double dip', blurb: 'Two sales on one call.' },
+  { id: 'bait-spotter', name: 'Not today', blurb: 'Hang up on a scambaiter before opening their file.' },
   { id: 'vip', name: 'Star treatment', blurb: 'Close a VIP.' },
   { id: 'verified', name: 'Checks out', blurb: 'Pass a caller\'s verification question.' },
   { id: 'best-friends', name: 'Best friends', blurb: 'Get a caller to 95% trust.' },
@@ -97,6 +99,7 @@ bus.on<{ scam: string }>('call:paid', ({ scam }) => {
   if (SCAMS.every((s) => sold.includes(s.id))) unlock('catalogue');
 });
 bus.on<{ amount: number }>('earn', ({ amount }) => { myShift += amount; if (myShift >= 1000) unlock('grand'); });
+bus.on('baiter:spotted', () => { unlock('bait-spotter'); });
 bus.on<{ intent?: string }>('call:suspicion', ({ intent }) => { if (intent === 'challenge_pass') unlock('verified'); });
 bus.on<{ mood: number }>('call:mood', ({ mood }) => { if (mood >= 95) unlock('best-friends'); });
 bus.on<{ done?: boolean } | undefined>('objective', (o) => { if (o?.done) { const s = objectiveSummary(); if (s.total === 3 && s.done === 3) unlock('hat-trick'); } });

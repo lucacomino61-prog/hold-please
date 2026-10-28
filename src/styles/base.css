@@ -6,6 +6,9 @@
 /* 1. Reset — https://www.joshwcomeau.com/css/custom-css-reset/ */
 *, *::before, *::after { box-sizing: border-box; }
 *:not(dialog) { margin: 0; }
+/* `hidden` always wins: a component's display rule must never keep a hidden element on screen (the Continue button,
+   the On hold strip, the transfer menu and the suspicion chip all showed while hidden before this rule) */
+[hidden] { display: none !important; }
 @media (prefers-reduced-motion: no-preference) {
   html { interpolate-size: allow-keywords; }
 }

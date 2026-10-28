@@ -68,6 +68,30 @@ export function removeCustomCaller(id: string): void {
 const byId = new Map(ROSTER.map((c) => [c.id, c]));
 export function callerById(id: string): Caller | undefined { return byId.get(id); }
 
+// ---- the default pack: a browser with no callers of its own gets the Albanian pack ----
+// Since the invented roster was retired (20 Oct) the floor rings only Character Creator callers, so a first visit
+// had nobody to ring. The pack is fetched once and kept like an import: the Creator can edit or remove its people.
+const PACK_URL = '/packs/albanian-callers.json';
+let packLoad: Promise<boolean> | null = null;
+/** resolves true once there is somebody to ring: this browser's own callers, or the default pack */
+export function ensureCallers(): Promise<boolean> {
+  if (custom.length) return Promise.resolve(true);
+  if (packLoad) return packLoad;
+  packLoad = fetch(PACK_URL, { cache: 'no-cache' })
+    .then((r) => (r.ok ? r.json() : []))
+    .then((list: unknown) => {
+      for (const c of Array.isArray(list) ? (list as Caller[]) : []) {
+        if (c && c.id && c.name && !byId.has(c.id)) { custom.push(c); ROSTER.push(c); byId.set(c.id, c); }
+      }
+      if (custom.length) { persist(); bus.emit('callers:synced', custom); }
+      return custom.length > 0;
+    })
+    .catch(() => false)
+    .then((ok) => { if (!ok) packLoad = null; return ok; }); // a failed load is tried again on the next ask
+  return packLoad;
+}
+if (!custom.length) void ensureCallers();
+
 // Draw the next caller: no repeats until the pool is used up; inspectors only from day 2.
 // one call in twenty is a celebrity (they may call again; fame is like that)
 let vipChance = 0.05;

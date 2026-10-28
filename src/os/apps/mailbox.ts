@@ -8,7 +8,7 @@ import { openApp, registerApp } from '../registry';
 import { openWindow } from '../windows';
 import { toast } from '../../ui/toast';
 
-interface Mail { id: number; from: string; subject: string; body: string; at: number; read: boolean; kind: 'krull' | 'bait' | 'sale' | 'note'; attach?: string; action?: { label: string; run: () => void } }
+interface Mail { id: number; from: string; subject: string; body: string; at: number; read: boolean; kind: 'krull' | 'bait' | 'sale' | 'note'; attach?: string; fromCall?: boolean; action?: { label: string; run: () => void } }
 const mails: Mail[] = [];
 let nextId = 1;
 let lastSeed = 0;
@@ -43,6 +43,11 @@ function seed(): void {
   else { const b = BAIT[Math.floor(Math.random() * BAIT.length)]; add({ from: b.from, subject: b.subject, body: b.body, kind: 'bait', attach: b.attach }); }
 }
 bus.on('tick', seed);
+// a scambaiter on the phone mails their 'photo': opening it is the virus, and the call remembers it
+const BAIT_FILES = ['crater_photo.jpg.exe', 'my_details.pdf.exe', 'receipt_scan.png.exe', 'proof.docx.exe'];
+bus.on<{ from: string }>('baiter:mail', ({ from }) => {
+  add({ from, subject: 'The photo I mentioned on the phone', body: 'Here it is, like I said. Open it, it explains everything. Do not ask questions, just open it.', kind: 'bait', attach: BAIT_FILES[Math.floor(Math.random() * BAIT_FILES.length)], fromCall: true });
+});
 bus.on<{ scam: string; amount: number }>('call:paid', ({ scam, amount }) => {
   const s = SCAMS.find((x) => x.id === scam);
   const who = state.calls[state.calls.length - 1]?.name ?? 'A customer';
@@ -58,7 +63,7 @@ registerApp({ id: 'mailbox', name: 'Mailbox', color: '#3a8fd9', glyph: 'mail', k
     const show = (m: Mail) => {
       m.read = true; openId = m.id; bus.emit('mail', unread());
       read.innerHTML = `<div class="mail__head"><b>${esc(m.subject)}</b><span>From ${esc(m.from)} · ${new Date(m.at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span></div><p>${esc(m.body)}</p>${m.attach ? `<button type="button" class="mail__attach" data-attach>📎 ${esc(m.attach)}</button>` : ''}${m.action ? `<button type="button" class="btn" data-action>${esc(m.action.label)}</button>` : ''}`;
-      read.querySelector('[data-attach]')?.addEventListener('click', () => { sfx.bad(); startVirus('mail'); });
+      read.querySelector('[data-attach]')?.addEventListener('click', () => { sfx.bad(); if (m.fromCall) bus.emit('baiter:opened', { from: m.from }); startVirus('mail'); });
       read.querySelector('[data-action]')?.addEventListener('click', () => m.action?.run());
       draw();
     };

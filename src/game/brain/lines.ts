@@ -122,6 +122,12 @@ const TABLES: Record<Archetype, Table> = {
   inspector: { ...base, ...inspector },
 };
 
+/** a line from the plain table, with no archetype colour: what Albanian and Italian play runs through t() */
+export function plainLine(r: Reaction): string {
+  const l = base[r];
+  return l[Math.floor(Math.random() * l.length)];
+}
+
 export function line(arch: Archetype, r: Reaction): string {
   const list = TABLES[arch][r] ?? base[r];
   return list[Math.floor(Math.random() * list.length)];
@@ -157,4 +163,6 @@ export const GIVE: Record<GiveKind, string[]> = {
   toothcount: ['The ghost has {value} teeth left. {value}. We counted in the mirror, sort of.', '{value} teeth. {value}. The rest went in the war, it says.', 'It\'s got {value} left. {value}. Pull nothing it likes.'],
   zonehours: ['I want to live {value} ahead. {value}. I want to know things first.', 'Move me {value}. {value} and I\'ll finally be early for once.', 'Set it to {value}. {value}, and leave the furniture.'],
   viewcode: ['The FarView code on my screen says {value}. Did you get it? {value}.', 'It\'s flashing... {value}. The code is {value}.', 'One-time code... {value}. {value}. Is it connecting? It feels like it\'s connecting.'],
+  starclue: ['My star? I can see it from the kitchen. It is {value}. You can\'t miss it. Well. You can.', 'Out of the window... there. {value}. It winks at me.', 'It is {value}. I named it already, in my head. Do I still pay?'],
+  crateword: ['The password for the crate? Let me think... {value}. Yes. {value}.', '{value}. Write it on the crate. Big letters. {value}.', 'Make it {value}. The penguins will like {value}.'],
 };

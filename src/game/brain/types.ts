@@ -8,7 +8,8 @@ export type Archetype = 'creature' | 'machine' | 'spirit' | 'legend' | 'cosmic' 
 export type GiveKind =
   | 'crater' | 'sunserial' | 'gravitypin' | 'cumulus' | 'vowelname' | 'hauntref' | 'petplan' | 'rune' | 'bean' | 'fridgecode'
   | 'lavaweek' | 'quietword' | 'shadows' | 'tuesday' | 'echoword' | 'dreamcode' | 'colours'
-  | 'sky' | 'shadowlength' | 'fallcount' | 'birthmonth' | 'nobelfield' | 'depth' | 'echocount' | 'station' | 'toothcount' | 'zonehours' | 'viewcode';
+  | 'sky' | 'shadowlength' | 'fallcount' | 'birthmonth' | 'nobelfield' | 'depth' | 'echocount' | 'station' | 'toothcount' | 'zonehours' | 'viewcode'
+  | 'starclue' | 'crateword';
 
 /** a verification question the caller asks when they start doubting you; `accept` is what passes it:
  *  a RegExp on the answer, or 'name' (the player's own name), 'company' (Sunrise Customer Care),
@@ -73,6 +74,7 @@ export interface CallCtx {
   claims: { name?: string; company?: string };  // what the player said about themselves (contradictions are noticed)
   askStreak: number;            // asks for the item in a row
   sceneSaid?: string;           // the background event this caller has already remarked on (scene.ts)
+  baiter?: boolean;             // a scambaiter: stalls, never hands anything over, mails the player a virus
 }
 
 export interface Turn {

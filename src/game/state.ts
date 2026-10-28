@@ -6,7 +6,8 @@ export type Phase = 'title' | 'break' | 'floor' | 'shift' | 'review' | 'unlock' 
 export type ScamId =
   | 'moon' | 'sun' | 'gravity' | 'clouds' | 'vowels' | 'haunt' | 'petwifi' | 'runes' | 'beancoin' | 'fridge'
   | 'volcano' | 'silence' | 'shadow' | 'tuesday' | 'echo' | 'dream' | 'rainbow'
-  | 'weather' | 'shadowtax' | 'gravityrefund' | 'birthday' | 'nobel' | 'cavedive' | 'echolease' | 'subway' | 'ghostdentist' | 'timezone' | 'remote';
+  | 'weather' | 'shadowtax' | 'gravityrefund' | 'birthday' | 'nobel' | 'cavedive' | 'echolease' | 'subway' | 'ghostdentist' | 'timezone' | 'remote'
+  | 'stars' | 'courier';
 
 export const STARTER_SCAMS: ScamId[] = ['moon', 'sun', 'gravity'];
 
@@ -24,6 +25,8 @@ export interface CallRecord {
   lines: Line[];
   hungUpBy: 'you' | 'caller' | 'shift' | 'transfer' | null;
   virus?: boolean;
+  baiter?: boolean;        // the caller was a scambaiter
+  baitOpened?: boolean;    // and the player opened the file they mailed
   suspicionMax?: number;   // how suspicious the caller got (0–100)
   busted?: boolean;        // they hung up because they saw through you
 }
@@ -47,8 +50,19 @@ export interface Settings {
   roomPublic: boolean;
   /** who rings: 'people' = only the Character Creator's callers once there are any (the built-in creatures stay out), 'all' = everyone */
   callerPool: 'all' | 'people';
-  lang: 'en' | 'sq' | 'it';   // the language of the office (i18n.ts); callers answer in whatever you write
+  lang: 'en' | 'sq' | 'it';   // the language of the office (i18n.ts); live callers answer in it too
   musicVolume: number;        // Hold FM's real tracks (music.ts), 0–1
+  /** who speaks for the callers: the browser's own voices, or the HD voices that run in the browser (voices-hd.ts) */
+  voices: 'browser' | 'hd';
+  /** who hears you: 'auto' = the browser's speech recognition where it has one (Chrome, Edge), else the AI's
+   *  (Whisper through the brain proxy); or force either */
+  ears: 'auto' | 'ai' | 'browser';
+  /** Family mode: no swearing on screen or from the callers, no toilet jokes on the floor */
+  family: boolean;
+  /** Streamer mode: room and sync codes masked, the other players' screens blanked on the floor */
+  streamer: boolean;
+  /** the code that keeps this browser's saves in step with others (save-sync.ts); empty = not synced */
+  syncCode: string;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -69,6 +83,11 @@ const DEFAULT_SETTINGS: Settings = {
   callerPool: 'people',
   lang: 'en',
   musicVolume: 0.5,
+  voices: 'browser',
+  ears: 'auto',
+  family: false,
+  streamer: false,
+  syncCode: '',
 };
 
 export const settings: Settings = loadSettings();

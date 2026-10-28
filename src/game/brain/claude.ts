@@ -15,11 +15,24 @@ import { priorText, priorWith } from '../memory';
 import { SCENE_TEXT, type SceneKind } from '../scene';
 import { mutatorSuspicion } from '../mutators';
 import { caseFacts } from '../case';
+import { lang, t } from '../../i18n';
+import type { Challenge } from './types';
 
-const KINDS: GiveKind[] = ['crater', 'sunserial', 'gravitypin', 'cumulus', 'vowelname', 'hauntref', 'petplan', 'rune', 'bean', 'fridgecode', 'lavaweek', 'quietword', 'shadows', 'tuesday', 'echoword', 'dreamcode', 'colours', 'sky', 'shadowlength', 'fallcount', 'birthmonth', 'nobelfield', 'depth', 'echocount', 'station', 'toothcount', 'zonehours', 'viewcode'];
+/** the office language, as the model is told it; English play needs no line */
+const LANG_NAME = { sq: 'Albanian (shqip)', it: 'Italian (italiano)' } as const;
+/** the game reads pitches, asks and verification answers with English patterns; in Albanian or Italian the model judges them */
+const foreignPlay = (): boolean => lang() !== 'en';
+// when the model fails a turn in Albanian or Italian, the built-in brain would answer in English: the caller
+// blames the line instead, in the office language; two failures in a row hand the turn to the built-in brain
+const STALL_OPEN = ['Hello? Hello? The line is terrible. Who is this?', 'Hello? Is this Sunrise Customer Care? Speak up, the line is bad.'];
+const STALL = ['Sorry, the line crackled. Say that again?', 'Hello? You broke up there. What did you say?', 'One moment, the line is terrible. Again, please?'];
+const failures = new WeakMap<CallCtx, number>();
+const stallTurn = (pool: string[], intent: string): Turn => ({ say: t(pool[Math.floor(Math.random() * pool.length)]), moodDelta: 0, mood: 'calm', intent });
+
+const KINDS: GiveKind[] = ['crater', 'sunserial', 'gravitypin', 'cumulus', 'vowelname', 'hauntref', 'petplan', 'rune', 'bean', 'fridgecode', 'lavaweek', 'quietword', 'shadows', 'tuesday', 'echoword', 'dreamcode', 'colours', 'sky', 'shadowlength', 'fallcount', 'birthmonth', 'nobelfield', 'depth', 'echocount', 'station', 'toothcount', 'zonehours', 'viewcode', 'starclue', 'crateword'];
 
 export type Provider = 'auto' | 'cf' | 'anthropic' | 'chat';
-export interface ProxyInfo { ok: boolean; key: boolean; ai: boolean; chat: boolean; models?: Partial<Record<'cf' | 'chat' | 'anthropic', string | string[]>>; providers?: { name: string; models: string[]; key: boolean; resting: boolean }[] }
+export interface ProxyInfo { ok: boolean; key: boolean; ai: boolean; chat: boolean; stt?: boolean; models?: Partial<Record<'cf' | 'chat' | 'anthropic', string | string[]>>; providers?: { name: string; models: string[]; key: boolean; resting: boolean }[] }
 
 // the brain proxy keeps the keys server-side; set in .env.development / .env.production
 export const PROXY_URL: string = (import.meta.env.VITE_BRAIN_URL as string | undefined) ?? '';
@@ -34,7 +47,7 @@ export async function checkProxy(): Promise<boolean> {
   try {
     const res = await fetch(base + '/health', { signal: AbortSignal.timeout(4000) });
     const j = await res.json() as Partial<ProxyInfo>;
-    info = { ok: !!j.ok, key: !!j.key, ai: !!j.ai, chat: !!j.chat, models: j.models, providers: j.providers };
+    info = { ok: !!j.ok, key: !!j.key, ai: !!j.ai, chat: !!j.chat, stt: !!j.stt, models: j.models, providers: j.providers };
   } catch { info = { ok: false, key: false, ai: false, chat: false }; }
   return info.ok && (info.ai || info.key || info.chat);
 }
@@ -50,6 +63,14 @@ export function providerFor(): Provider {
   return settings.apiKey && !proxyBase() ? 'anthropic' : 'auto';
 }
 export function providerLabel(p: Provider = providerFor()): string { return p === 'auto' || p === 'cf' ? 'Free AI' : p === 'anthropic' ? 'Claude' : 'OpenRouter'; }
+/** the model that answers first, for the shift-start message: the player's own pick when the provider takes it,
+ *  else the first one the proxy reported (the Claude setting means nothing to the free chain) */
+export function modelLabel(p: Provider = providerFor()): string {
+  const first = (x: string | string[] | undefined): string => (Array.isArray(x) ? x[0] : x) || '';
+  const own = modelFor(p === 'auto' ? 'cf' : p);
+  const m = own || (p === 'anthropic' ? first(info?.models?.anthropic) : p === 'chat' ? first(info?.models?.chat) : first(info?.models?.cf));
+  return m.replace(/^@cf\/[^/]+\//, '');
+}
 
 /** a model the player typed in Settings; the proxy puts it first in its own family and ignores anything it does not know */
 function modelFor(p: Provider): string | undefined {
@@ -67,8 +88,10 @@ function valueFor(ctx: CallCtx, kind: GiveKind): string {
   return ctx.values[kind];
 }
 
-function system(ctx: CallCtx): string {
+function system(ctx: CallCtx, testNow: Challenge | null = null): string {
   const c = ctx.caller;
+  const foreign = foreignPlay();
+  const language = foreign ? LANG_NAME[lang() as 'sq' | 'it'] : '';
   const persona = personaFor(c);
   const products = SCAMS.filter((s) => ctx.owned.has(s.id)).map((s) => {
     return `- ${s.name} (${s.tagline}) — they must pitch it, then ask you for your "${s.needs}"; hand it over only when your mood is at least ${gateFor(ctx, s)}, by setting "gives": {"kind": "${s.needs}"}. The game then says the exact value for you: never invent, guess or name the value yourself, in any turn.`;
@@ -85,6 +108,7 @@ function system(ctx: CallCtx): string {
     : ctx.turn === 0 ? 'The call has just started: the player has not said what they are selling. Be yourself, be curious or wary, ask what this is about.'
     : sold.length && !pitchedOpen.length ? `A sale is done (${sold.map((s) => s.name).join(', ')}). Be pleased or relieved in your own way; if they fish for something else, make them earn it again.`
     : pitchedOpen.length ? `They have pitched ${pitchedOpen.map((s) => s.name).join(' and ')} but have not asked you for the ${pitchedOpen.map((s) => s.needs).join('/')} yet. React to that product as this character would${liked.some((n) => pitchedOpen.some((s) => s.name === n)) ? ' (you secretly love it)' : ' (you are lukewarm about it)'}; if your mood is at the threshold, hint that you would need to know what to do next.`
+    : foreign ? 'Judge from the conversation which product, if any, the player has pitched and whether they have asked you for its item. Hand over only an item they asked for, for a product they pitched; until then react to what they said and nudge them to say what they are offering.'
     : 'They have not pitched any product yet: do not hand anything over; react to what they said and nudge them to say what they are offering.';
   const facts = [
     situation,
@@ -92,11 +116,14 @@ function system(ctx: CallCtx): string {
     ctx.topics.length ? `Things the player has played along with so far: ${ctx.topics.join(', ')}.` : '',
     ctx.pitched.size ? `Products already pitched: ${[...ctx.pitched].join(', ')}.` : '',
     Object.keys(ctx.given).length ? `You already handed over: ${Object.keys(ctx.given).join(', ')} (never repeat those).` : '',
-    ctx.answered ? 'The player answered your question already; do not ask it again.' : 'Your question has not been answered yet; work it in every two or three turns.',
+    ctx.answered ? 'The player answered your question already; do not ask it again.' : foreign ? 'Ask your question again only if the player has not answered it yet, at most every two or three turns.' : 'Your question has not been answered yet; work it in every two or three turns.',
     ctx.claims.name ? `The player said their name is ${ctx.claims.name}.` : '',
     ctx.claims.company ? `The player said they are from ${ctx.claims.company}.` : '',
-    ctx.challenge ? `You asked them a verification question ("${ctx.challenge.ask}") and are waiting for a proper answer.` : ctx.challengesUsed ? 'You have tested them already; do not test them again.' : '',
+    ctx.challenge ? `You asked them a verification question ("${ctx.challenge.ask}") and are waiting for a proper answer.${foreign ? ' You judge their answer: set "suspicionDelta" to -15 if it answers the question well, or +10 if it dodges it.' : ''}`
+      : testNow ? `This turn, test them: work this verification question into your reply, in your own words and in ${language}: "${testNow.ask}". Hand nothing over this turn.`
+      : ctx.challengesUsed ? 'You have tested them already; do not test them again.' : '',
     c.archetype !== 'inspector' ? priorText(priorWith(c.id), ctx.claims.name ?? ctx.playerName) : c.id === 'vane' ? caseFacts() : '',
+    ctx.baiter ? `SECRET: tonight you are a scambaiter, wasting this agent's time on purpose. Sound eager and friendly, but never hand anything over, whatever they say. Stall: ask them to repeat things, to spell their name, to wait while you find your glasses, to give you their supervisor's name. Never say you are a scambaiter.` : '',
     state.scene && ctx.sceneSaid !== state.scene ? `Background on the player's end right now: ${SCENE_TEXT[state.scene as Exclude<SceneKind, ''>]}. You may remark on it once, in character, then let it go.` : '',
   ].filter(Boolean).join('\n');
   if (state.scene) ctx.sceneSaid = state.scene;
@@ -104,7 +131,7 @@ function system(ctx: CallCtx): string {
   const susBlock = c.archetype === 'inspector' ? '' : `
 SUSPICION (0–100, now ${ctx.suspicion}): you are ${waryWord(persona.wary)}. It rises when they ask for the item before pitching the product (+8), ask again straight away (+6), push or pressure you ("act now", "last chance") (+10), say "trust me" or "this is not a scam" (+8), threaten (+15), change their story about their name or company (+14), want a second item on the same call (+6), or repeat themselves (+3). It falls when they answer your question (−8), use your name (−3), play along with your world (−3 each), answer your verification question well (−15), or chat kindly (−2).
 Your own suspicious lines: ${persona.suspicions.map((s) => `"${s}"`).join(' ')}
-When suspicion is high you get wary in your own words; the game itself adds your verification question when it is time and judges the answer, so never ask a verification question yourself and never repeat one. Your verification questions, for reference: ${persona.challenges.slice(0, 2).map((ch) => `"${ch.ask}"`).join(' ')}
+When suspicion is high you get wary in your own words; ${foreign ? 'the game tells you in the facts below when to ask a verification question, so never ask one otherwise and never repeat one.' : 'the game itself adds your verification question when it is time and judges the answer, so never ask a verification question yourself and never repeat one.'} Your verification questions, for reference: ${persona.challenges.slice(0, 2).map((ch) => `"${ch.ask}"`).join(' ')}
 When suspicion reaches 85, hang up with one of these: ${persona.byeSuspicious.map((s) => `"${s}"`).join(' ')}
 You are NOT easy. Never hand anything over before the third exchange, never while suspicion is 55 or more, never before they have pitched that product and asked for the item, and never because they simply insist. But once they HAVE pitched it, asked for the item, your mood is at the threshold and suspicion is under 55, hand it over on that very turn: stalling a player who earned it is not funny.`;
   return `This is a comedy improv phone game. Everything is fictional and absurd. You play ${c.name}: ${c.gimmick}${vip}
@@ -113,7 +140,9 @@ Your world words (things you care about): ${c.world.join(', ')}. A question you 
 The player works at Sunrise Customer Care in Port Fortune and is trying to sell you impossible products:
 ${products}
 MOOD (0–100, now ${ctx.mood}): warm up (+4 to +12) when the player greets you, uses your name, plays along with your world ("yes, and…"), answers your question, is kind or funny. Cool down when insulted (−20), told you are not real (−12), rushed (−6) or threatened (−10). Repeating themselves bores you (−4). If they ask who you are or why you called, answer in character. If they mention a price, react to the price. When your mood is above a product's threshold and they have pitched it but not asked for the closing item, nudge them ("so what do you need from me?").${susBlock}
-Stay in character, be funny and specific, keep replies to 1–3 short sentences, never explain the game, never use the words "scam" or "improv". "say" is plain spoken sentences only: no markdown, no asterisks or headings, no labels, no stage directions, nothing in capitals except a shout.
+Stay in character, be funny and specific, keep replies to 1–3 short sentences, never explain the game, never use the words "scam" or "improv". "say" is plain spoken sentences only: no markdown, no asterisks or headings, no labels, no stage directions, nothing in capitals except a shout.${foreign ? `
+LANGUAGE: the office runs in ${language}. Every "say" is in ${language}, from your very first line, even where earlier lines of this call or the notes above are in English; switch only if the player writes to you in another language, and then answer in theirs. Product names and the JSON keys and "kind" values stay as they are.` : ''}${settings.family ? `
+FAMILY MODE: every line stays clean enough for a ten-year-old: no swearing in any language, no insult stronger than "silly", no toilet or bodily humour, nothing sexual or gory. If the player swears, react to the rudeness in character without repeating the word.` : ''}
 Facts so far:
 ${facts}${inspector}
 Reply ONLY with JSON on one line: {"say": "...", "moodDelta": <integer -25..12>, "suspicionDelta": <integer -20..20>, "testing": <boolean>, "gives": {"kind": "<one of ${KINDS.join('|')}>"} or null, "hangUp": <boolean>, "virus": <boolean>}. Hang up only when your mood would drop under 5, suspicion reaches 85, or the call is clearly over.`;
@@ -128,11 +157,21 @@ function messagesFrom(ctx: CallCtx, latest: string): { role: 'user' | 'assistant
   }
   if (!msgs.length || msgs[msgs.length - 1].role !== 'user') msgs.push({ role: 'user', content: latest });
   if (msgs[0].role === 'assistant') msgs.unshift({ role: 'user', content: '(the player answers the phone)' });
+  // the history shows the caller's past turns as plain speech, and weaker models start copying that format;
+  // a game note on the newest line keeps them on the one-line JSON the game reads
+  msgs[msgs.length - 1] = { role: 'user', content: msgs[msgs.length - 1].content + '\n\n(game note: answer with the one-line JSON object only)' };
   return msgs;
 }
 
-async function complete(ctx: CallCtx, msgs: { role: 'user' | 'assistant'; content: string }[]): Promise<string> {
-  const sys = system(ctx);
+async function complete(ctx: CallCtx, msgs: { role: 'user' | 'assistant'; content: string }[], testNow: Challenge | null = null): Promise<string> {
+  const sys = system(ctx, testNow);
+  const text = await completeRaw(ctx, sys, msgs);
+  // development only: a probe can read what the model was told and what it decided
+  if (import.meta.env.DEV) (window as unknown as { __hpBrainLog?: unknown[] }).__hpBrainLog?.push({ sys, msgs, text });
+  return text;
+}
+
+async function completeRaw(ctx: CallCtx, sys: string, msgs: { role: 'user' | 'assistant'; content: string }[]): Promise<string> {
   const proxy = proxyBase();
   const direct = !!settings.apiKey && (settings.brain === 'claude' || !proxy);
   const ctrl = new AbortController();
@@ -209,10 +248,16 @@ export function cleanSay(s: string): string {
 }
 
 async function ask(ctx: CallCtx, msgs: { role: 'user' | 'assistant'; content: string }[]): Promise<Turn> {
-  const j = parse(await complete(ctx, msgs));
+  // in Albanian or Italian the caller asks its verification question itself, in that language: the game decides
+  // the test before the request (on the suspicion so far) instead of pasting an English question onto the reply
+  const foreign = foreignPlay();
+  const persona0 = personaFor(ctx.caller);
+  const testNow = foreign && ctx.caller.archetype !== 'inspector' && !ctx.challenge && ctx.turn >= 1 && ctx.suspicion >= 40 && ctx.suspicion < 85 && ctx.challengesUsed < Math.min(2, persona0.challenges.length)
+    ? persona0.challenges[ctx.challengesUsed] : null;
+  const j = parse(await complete(ctx, msgs, testNow));
   // the game's own rules, whatever the model decided: a line that pushes never earns a hand-over, and the
   // suspicion it earns is at least what the built-in brain would charge for it
-  const latest = msgs.length ? msgs[msgs.length - 1].content : '';
+  const latest = (msgs.length ? msgs[msgs.length - 1].content : '').replace(/\n\n\(game note: [^)]*\)$/, '');
   const lastIsPlayer = msgs.length > 0 && msgs[msgs.length - 1].role === 'user';
   if (lastIsPlayer && ctx.caller.archetype !== 'inspector') {
     if (isPushy(latest) || PUSHY.test(latest)) j.gives = null;
@@ -232,11 +277,16 @@ async function ask(ctx: CallCtx, msgs: { role: 'user' | 'assistant'; content: st
     const persona = personaFor(ctx.caller);
     let sd = Math.max(-20, Math.min(20, Math.round((Number(j.suspicionDelta) || 0) * mutatorSuspicion())));
     if (ctx.challenge) {
-      // an open verification question is judged by the game, like the built-in brain does
-      if (passes(ctx, ctx.challenge, latest)) { ctx.challenge = null; ctx.challengeTurns = 0; sd -= 15; turn.intent = 'challenge_pass'; }
+      // an open verification question is judged by the game, like the built-in brain does; in Albanian or
+      // Italian the model's own verdict counts too (it was told to answer a good reply with -15)
+      const modelPass = foreign && (Number(j.suspicionDelta) || 0) <= -10;
+      if (passes(ctx, ctx.challenge, latest) || modelPass) { ctx.challenge = null; ctx.challengeTurns = 0; sd = modelPass ? Math.min(sd, -15) : sd - 15; turn.intent = 'challenge_pass'; }
       else if (++ctx.challengeTurns >= 2) { ctx.challenge = null; ctx.challengeTurns = 0; ctx.challengesFailed++; sd += 12; turn.intent = 'challenge_fail'; turn.gives = undefined; }
       else { turn.challenge = true; turn.intent = 'challenge'; turn.gives = undefined; }
-    } else if (ctx.suspicion + sd >= 40 && ctx.suspicion + sd < 85 && ctx.challengesUsed < Math.min(2, persona.challenges.length) && !turn.hangUp) {
+    } else if (testNow && !turn.hangUp) {
+      ctx.challenge = testNow; ctx.challengesUsed++; ctx.challengeTurns = 0;
+      turn.challenge = true; turn.intent = 'challenge'; turn.gives = undefined;
+    } else if (!foreign && ctx.suspicion + sd >= 40 && ctx.suspicion + sd < 85 && ctx.challengesUsed < Math.min(2, persona.challenges.length) && !turn.hangUp) {
       // suspicion is up: the caller tests the player with one of their own questions (the model's words first)
       const ch = persona.challenges[ctx.challengesUsed++];
       ctx.challenge = ch; ctx.challengeTurns = 0;
@@ -245,17 +295,20 @@ async function ask(ctx: CallCtx, msgs: { role: 'user' | 'assistant'; content: st
     }
     const next = Math.max(0, Math.min(100, ctx.suspicion + sd));
     if (next >= 85 && !turn.hangUp) {
-      turn.say = persona.byeSuspicious[Math.floor(Math.random() * persona.byeSuspicious.length)] ?? turn.say;
+      // the stock goodbye is English: in Albanian or Italian the model's own last line stays
+      if (!foreign) turn.say = persona.byeSuspicious[Math.floor(Math.random() * persona.byeSuspicious.length)] ?? turn.say;
       turn.hangUp = true; ctx.challenge = null;
     }
     if (turn.hangUp && next >= 85) turn.intent = 'busted';
     if (sd) turn.suspicionDelta = Math.max(-25, Math.min(25, sd));
   }
   // the model decides when to hand over; the game still refuses too-early, too-suspicious and mid-test gives
-  if (j.gives && j.gives.kind && KINDS.includes(j.gives.kind as GiveKind) && ctx.caller.archetype !== 'inspector' && ctx.turn >= 2 && ctx.suspicion < 55 && !ctx.challenge && turn.intent !== 'challenge_fail') {
+  if (j.gives && j.gives.kind && KINDS.includes(j.gives.kind as GiveKind) && ctx.caller.archetype !== 'inspector' && !ctx.baiter && ctx.turn >= 2 && ctx.suspicion < 55 && !ctx.challenge && turn.intent !== 'challenge_fail') {
     const kind = j.gives.kind as GiveKind;
     const scam = SCAMS.find((s) => s.needs === kind);
-    if (scam && ctx.owned.has(scam.id) && !ctx.given[kind] && ctx.pitched.has(scam.id)) {
+    // the English pitch patterns cannot read Albanian or Italian, so there the model's judgement of the pitch stands
+    if (scam && ctx.owned.has(scam.id) && !ctx.given[kind] && (ctx.pitched.has(scam.id) || foreign)) {
+      ctx.pitched.add(scam.id);
       const value = valueFor(ctx, kind);
       turn.gives = { kind, value };
       if (!turn.say.includes(value)) turn.say += ` ${value}.`;
@@ -270,8 +323,12 @@ export const liveBrain: CallerBrain = {
   name: 'live',
   async open(ctx) {
     if (!liveBrainConfigured()) return scriptedBrain.open(ctx);
-    try { const t = await ask(ctx, [{ role: 'user', content: '(the player answers the phone; open the call in character)' }]); t.intent = 'open'; return t; }
-    catch (e) { console.warn('live brain open failed', e); return scriptedBrain.open(ctx); }
+    try { const turn = await ask(ctx, [{ role: 'user', content: '(the player answers the phone; open the call in character)' }]); turn.intent = 'open'; return turn; }
+    catch (e) {
+      console.warn('live brain open failed', e);
+      if (foreignPlay()) { failures.set(ctx, 1); return stallTurn(STALL_OPEN, 'open'); }
+      return scriptedBrain.open(ctx);
+    }
   },
   async respond(ctx, text) {
     if (!liveBrainConfigured()) return scriptedBrain.respond(ctx, text);
@@ -285,8 +342,14 @@ export const liveBrain: CallerBrain = {
     }
     ctx.askStreak = asked ? ctx.askStreak + 1 : 0;
     ctx.yourLines.push(text.trim().toLowerCase());
-    try { return await ask(ctx, messagesFrom(ctx, text)); }
-    catch (e) { console.warn('live brain respond failed, built-in brain for this turn', e); return scriptedBrain.respond(ctx, text); }
+    try { const turn = await ask(ctx, messagesFrom(ctx, text)); failures.delete(ctx); return turn; }
+    catch (e) {
+      const n = (failures.get(ctx) ?? 0) + 1;
+      failures.set(ctx, n);
+      if (foreignPlay() && n < 2) { console.warn('live brain respond failed, the caller blames the line', e); return stallTurn(STALL, 'stall'); }
+      console.warn('live brain respond failed, built-in brain for this turn', e);
+      return scriptedBrain.respond(ctx, text);
+    }
   },
 };
 

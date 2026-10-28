@@ -5,9 +5,12 @@ shift at a call centre, talk callers into buying things, hit the quota before th
 survive the boss. The research on the original is in `docs/RESEARCH.md`; the design is in
 `DESIGN.md`; the build plan in `PLAN.md`.
 
-One deliberate difference: the callers are creatures, machines, ghosts and planets, and the
-products are impossible (acres of the Moon, a warranty on the Sun, a gravity subscription).
-Nothing in the game explains a real scheme. The loop is the same.
+One deliberate difference: the products are impossible (acres of the Moon, a warranty on the Sun,
+a gravity subscription), and nothing in the game explains a real scheme. The loop is the same.
+The callers are real public figures from the Albanian packs in `public/packs/` (a browser with no callers
+loads `albanian-callers.json` on its first visit), each drawn as a cartoon from the free photo on their
+Wikipedia article, or shown as initials where there is none. The invented creatures, machines and ghosts
+were removed on 20 October at Luca's request; the Character Creator still makes new callers.
 
 Live at **https://hold-please.pages.dev** (Cloudflare Pages); source at
 **https://github.com/lucacomino61-prog/hold-please** (public). The co-op server and the brain proxy are
@@ -270,18 +273,24 @@ to your personal account the moment one is done, and ticked off on a review slid
 
 ## Settings
 
-Title → Settings. Your name, callers speaking out loud (`speechSynthesis`), microphone input
-(Chrome/Edge, hold the mic button; typing always works), sound, Stop animations, skip the office
-walk, shift length (3/5/10/15 min), and who plays the callers:
+Title → Settings. Your name, callers speaking out loud, microphone input (hold the mic button;
+typing always works), sound, Stop animations, skip the office walk, the office language (English,
+Albanian, Italian), shift length (3/5/10/15 min), **Family mode** (swearing masked on screen and kept
+out of the voices, the live brain told to keep it clean, no plumbing disaster, gas or puddle on the
+floor), **Streamer mode** (room and sync codes shown as dots, a friend's desk shows the screensaver),
+the caller **voices** (the browser's, or the HD voices: Kokoro-82M running in the browser after one
+88 MB download), **who hears you** (the browser's speech recognition, or Whisper through the proxy for
+any browser), an optional ElevenLabs key, **saves on other devices** (a sync code), and who plays the callers:
 
-- **Built-in**: an offline improv engine with 200 characters, each with their own suspicions and
-  verification question (`src/game/brain/personas.ts`, `src/game/roster/`). Free, works offline.
+- **Built-in**: an offline improv engine that plays every caller with stock lines, their own
+  suspicions and verification questions (`src/game/brain/`). Free, works offline, English only.
 - **Free AI**: Cloudflare Workers AI plays each character live through the game's proxy. Free up to
   the proxy's daily allowance. Chosen by default whenever a proxy is configured.
 - **Claude**: the Anthropic API plays each character live. Needs your API key (stored in this
   browser only, sent straight to `api.anthropic.com`) or a proxy URL that adds the key. Model
   defaults to `claude-opus-5-5`; `claude-haiku-5-5` is far cheaper if you want volume.
-  Any failure falls back to the built-in brain mid-call.
+  Any failure falls back to the built-in brain mid-call (in Albanian or Italian the caller first
+  blames the line once, in that language, because the built-in brain speaks English only).
 
 ## Code map
 
@@ -290,7 +299,7 @@ src/main.ts               boot, dev hooks (window.__hp in dev)
 src/game/state.ts         run state, settings, quotas, money, event bus
 src/game/day.ts           break room → shift → review → next day / fired
 src/game/calls.ts         dialer, live call, mood, payouts, claim()
-src/game/callers.ts       the built-in characters + VIPs; roster/ holds the other 172
+src/game/callers.ts       the callers this browser has (the Albanian pack on a first visit), VIPs, the draw
 src/game/scams.ts         the 14 products and what closes them
 src/game/brain/           scripted.ts (improv rules), claude.ts (live model), lines.ts (dialogue), personas.ts (suspicion), style.ts (how each caller talks)
 src/game/memory.ts        what a caller remembers of earlier calls (mood bias, "you again" openers, facts for the model)
@@ -307,7 +316,16 @@ server/src/lobby.ts       the public room list (a singleton Durable Object rooms
 src/game/colleagues.ts    Teodora, Jun, Baxter (+ Rita, Drin, Ela): bios, voices, lines, reactions
 src/game/krull.ts         Mr. Krull's voice
 src/game/review.ts        the slides and Krull's lines (spoken)
-src/game/speech.ts        Web Speech in/out; voiceFor() shapes a voice from the style and the mood
+src/game/speech.ts        Web Speech in/out, Whisper ears through the proxy; voiceFor() shapes a voice from the style and the mood
+src/game/voices-hd.ts     the HD voices: Kokoro-82M (kokoro-js, WASM, threads when cross-origin isolated), chunked and pipelined
+src/game/review-ai.ts     Mr. Krull's roast written by Llama 3.3 70B through the proxy from the day's slides
+src/game/save-sync.ts     saves that follow the player: a sync code, gzip, the room server's /saves route, newest wins
+src/game/modes.ts         Family mode (the swear mask, three languages) and Streamer mode (codes as dots)
+src/game/sky.ts, courier.ts  the Star Registry's sky and the Penguin Courier's crates and Customs call
+src/world/floors.ts       one floor per rank: walls, carpet, light, the view, furniture against the walls, the sign
+src/ui/elevator.ts        the lift ride on the morning after a promotion
+src/os/toon.ts            the cartoon drawn from a caller's photo
+src/i18n.ts               t(): the English text is the key; the Albanian and Italian tables
 src/os/                   Harbour OS: windows.ts, desktop.ts, apps/*
 src/world/office.ts       the three.js office, the floor sandbox, clock-in dolly, Floor Cam, webcam
 src/world/people.ts       the scammers on the rig: sit/type/walk poses, head look, blink, scratch, tumble; headset, chain, badge
@@ -335,15 +353,23 @@ on slim necks with a webcam bar clipped on top, two long benches of eight PCs in
 original (no cubicles: pale laminate tops on steel T-legs, a white pedestal under every other
 position, a cable tray, a low frosted-glass privacy strip behind the monitors), slim keyboards,
 desk phones with a little display, posters, the vending machine, the light fixtures, light
-modern walls (a different tint per floor). Rendering goes through an EffectComposer — ambient occlusion (GTAO) and a soft
+modern walls. Each floor has its own walls, carpet, light, view and a little furniture
+(`src/world/floors.ts`). Rendering goes through an EffectComposer — ambient occlusion (GTAO) and a soft
 bloom on the lights. On a weak machine set `localStorage.setItem('hp.fx', '0')` to turn both
 off (reload).
 
 ## Checks
 
 - `npm run check` — TypeScript.
-- `node tools/check-roster.mjs` — the 200 callers: unique ids and names, every field the brains
+- `node tools/check-roster.mjs` — the built-in roster (empty since 20 Oct; the packs carry the callers): unique ids and names, every field the brains
   need, valid product ids, working challenge patterns (last run: ROSTER OK).
+- Round 20 (28 Oct), all on localhost with `npm run brain` and `npm run server` running; the probes live in
+  the session scratchpad (`cmp/`, `regress.mjs` runs them one after another): first visit 11/11, saves sync
+  5/5, Star Registry and Courier 9/9, scambaiters 7/7, AI review 4/4, voice chat 6/6, voices 9/9 (Whisper ears,
+  HD voices: the first words 2.6 s after a ring and 2.8 s from the setup desk on a 2013 quad-core; a voice with
+  nothing fetched ahead takes about 4.4 s), Albanian and Italian 13/13, the lift 7/7, Family mode with the live
+  brain 4/4, floors and both modes 18/18, the voice fetched during a ring 2/2; the HD speed and local tour runs
+  measure only (no page errors). `npm run check`, `npm run server:check` and `npm run build` are clean.
 - `node ~/.claude/skills/awwwards-blueprints/scripts/audit.mjs http://127.0.0.1:3730/` — the
   craft audit (last run: 0 fail).
 - A headless walkthrough that screenshots every screen lives in the session scratchpad
@@ -499,7 +525,52 @@ off (reload).
 - The **Character Creator** takes a photo: a URL, or a file from the computer (cropped square,
   256 px, kept in this browser with the caller).
 
+## Round 20 (28 Oct): the comparison with the original, fixed in order
+
+The comparison of 28 October ranked eleven gaps; all eleven are built, plus Family and Streamer mode.
+
+1. **The phone rings on a first visit.** A browser with no callers loads the Albanian pack at start-up
+   (`ensureCallers` in `src/game/callers.ts`); the dialer waits for it and retries every 10 s if the
+   network drops it, with one toast instead of silence.
+2. **Two small bugs.** `[hidden]` now always hides (the On hold strip showed on every call), and the
+   start-of-shift toast names the model the proxy really runs (`modelLabel()`), not the Claude setting.
+3. **Real voices.** HD voices: Kokoro-82M (Apache-2.0) runs in the browser after one 88 MB download,
+   25 voices matched to each caller, phrase by phrase so the first words come quickly
+   (`src/game/voices-hd.ts`). Cross-origin isolation (`public/_headers`, `vite.config.ts`) lets it use
+   threads. Each voice file is fetched ahead: while the phone rings, when the setup desk opens, and the
+   regulars' as soon as the model is up. English only; Albanian and Italian keep the browser's voices.
+4. **Talk in any browser.** Whisper on Workers AI through the proxy (`POST /v1/stt`, 12 s limit):
+   the page records until a 1.4 s pause and sends 16 kHz WAV. Automatic mode keeps the browser's own
+   recognition where it exists. A slow service and a refused microphone get different messages.
+5. **A review worth watching.** Llama 3.3 70B writes Mr. Krull's line for each slide from the day's
+   facts (`src/game/review-ai.ts`, written while the floor walk plays); the worst call replays as a
+   tape with the webcam still, REC, captions and both voices.
+6. **Scambaiters** (from day 2, 12% of calls): callers who stall, never hand anything over, and mail
+   a "photo". Hanging up before opening it pays $60, a daily target and the "Not today" badge.
+7. **The original's new content, in our world.** Star Registry (day 4): the caller describes their
+   star, each reply buys one reading on the chart, a direct hit pays $800. Penguin Courier (day 7):
+   book a crate with the caller's password; Port Fortune Customs rings later and that password clears it for $900.
+8. **Voice chat** between two browsers (fake microphones, the local room server): it never connected,
+   because the room server dropped every message over 400 characters, so the WebRTC offer never
+   arrived. `rtc` messages now pass up to 24,000. A test between two real people is still to do.
+9. **Saves that follow the player.** Settings → Saves on other devices makes a 12-character code; the
+   save slots, hall of fame, badges, look and colleagues go up gzipped to the room server
+   (`/saves/:code`, newest wins) two seconds after every save and come down when the game opens.
+10. **The translations, finished.** Every screen on the main path is in Albanian and Italian (about
+    570 lines each): the clock-in desk, the market, all 30 product instructions and request labels, the
+    43 daily targets, Settings, the lift, the stock lines a live call still uses. A live caller speaks the
+    office language from its first line; in Albanian or Italian the model judges pitches and
+    verification answers itself (the game's patterns are English), and a failed model turn becomes "the
+    line crackled" in that language. Product names stay English.
+11. **Floors.** Each rank works one floor higher: 7 The Pit, 12 Agents, 23 Senior Agents, 31 Floor
+    Leads (`src/world/floors.ts`), each with its own walls, carpet, light, view (the skyline sinks and the
+    top floor looks over the clouds), furniture against the walls and a wall sign. The sixteen desks,
+    seats and walk lanes never move. The morning after a promotion starts in the lift (`src/ui/elevator.ts`):
+    the number climbs, the chime, the doors open onto the new floor; a click or any key skips it.
+- **Family mode** and **Streamer mode** in Settings (`src/game/modes.ts`), described under Settings.
+
 ## Not built yet
 
-Voice packs for the callers (no CC0 cartoon voices exist; Kenney's CC0 voiceover packs are game
-phrases, not characters). The gamepad drives the office walk, not the desktop. See `PLAN.md`.
+The CC0 music for Hold FM is found but not downloaded (it waits for Luca's yes). Voice chat between
+two real people is untested. The Albanian lines want a native speaker's read. The Feedback link has no
+address yet (`FEEDBACK_URL`). The gamepad drives the office walk, not the desktop. See `PLAN.md`.

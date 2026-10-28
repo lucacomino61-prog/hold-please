@@ -13,8 +13,9 @@ export interface ScamDef {
   needs: GiveKind;
   ask: RegExp;           // the player asks for the item
   pitch: RegExp;         // the player mentions the product
-  payout: 'fixed' | 'budget' | 'units' | 'round' | 'scratch';
+  payout: 'fixed' | 'budget' | 'units' | 'round' | 'scratch' | 'manual';   // manual: the product's app pays
   fixed?: number;
+  minDay?: number;       // on sale in the market from this day (the late products, like the original's)
   color: string;
   glyph: string;
 }
@@ -48,6 +49,8 @@ export const SCAMS: ScamDef[] = [
   { id: 'subway', name: 'Subway to the Moon', tagline: 'One line, no changes, slightly upwards.', blurb: 'Ask which station they will board at and buy their ticket from that station on the map.', gate: 50, price: 540, needs: 'station', ask: /\b(which station|what station|where (will|do) you (board|get on)|board at|get on at|nearest station|your station)\b/i, pitch: /\b(subway|metro|underground|train|station|line to the moon)\b/i, payout: 'fixed', fixed: 330, color: '#d94b4b', glyph: 'subway' },
   { id: 'ghostdentist', name: 'Dentist for Ghosts', tagline: 'Teeth you cannot see, cleaned by hands you cannot see.', blurb: 'Ask how many teeth the ghost has left and pull the rest. Click the teeth in the mouth until that many remain.', gate: 50, price: 440, needs: 'toothcount', ask: /\b(how many teeth|teeth (do|have) you|number of teeth|count (your|the) teeth|teeth left)\b/i, pitch: /\b(dentist|teeth|tooth|floss|cavity|ghost)\b/i, payout: 'fixed', fixed: 270, color: '#8ab4c8', glyph: 'ghostdentist' },
   { id: 'timezone', name: 'Time Zone Transfer', tagline: 'Move your house to a better time zone. Furniture included.', blurb: 'Ask how many hours ahead they want to live and turn the transfer clock to that offset.', gate: 50, price: 500, needs: 'zonehours', ask: /\b(how many hours|which (time )?zone|what offset|hours ahead|hours (do|would) you|ahead or behind)\b/i, pitch: /\b(time ?zone|offset|hours ahead|jet ?lag|the clock)\b/i, payout: 'fixed', fixed: 300, color: '#2bb3a3', glyph: 'timezone' },
+  { id: 'stars', name: 'Star Registry', tagline: 'Own the star outside your window. We just need to find it.', blurb: 'The caller describes the star they can see. Keep them talking: every reply buys one reading on the chart. Click the star and register it. Up to $800 for a direct hit.', gate: 50, price: 700, minDay: 4, needs: 'starclue', ask: /\b(which star|what star|describe (the|your) star|what does (it|the star|your star) look like|where is (it|the star|your star)|what can you see|which one is (it|yours))\b/i, pitch: /\b(star|stars|register|registry|name a star|constellation|the sky)\b/i, payout: 'manual', color: '#2a3a7a', glyph: 'stars' },
+  { id: 'courier', name: 'Penguin Courier', tagline: 'A crate of penguins, delivered. Customs will want a word.', blurb: 'Talk the caller into a crate of penguins and get the password for the crate. Later in the shift Port Fortune Customs calls: give them that password in the Courier app and the crate pays $900.', gate: 55, price: 800, minDay: 7, needs: 'crateword', ask: /\b(password|pass ?word|code word|secret word|what (word|password) (do|would|should)|word (for|on) the crate)\b/i, pitch: /\b(penguin|penguins|crate|courier|delivery|deliver|parcel|shipment)\b/i, payout: 'manual', color: '#1f6f8b', glyph: 'courier' },
   { id: 'remote', name: 'FarView Remote Support', tagline: 'We connect to your computer from here and clean it. Mostly.', blurb: 'Every computer has a one-time FarView code. Ask the caller to read it, type it into FarView, connect, charge for the clean.', gate: 50, price: 560, needs: 'viewcode', ask: /\b(farview|connection code|one-?time code|the code on (your|the) screen|read (me )?(the|your) code|six digits)\b/i, pitch: /\b(remote|connect to your (computer|pc)|clean (your|the) (computer|pc)|support|viewer)\b/i, payout: 'fixed', fixed: 380, color: '#d12f2f', glyph: 'remote' },
 ];
 

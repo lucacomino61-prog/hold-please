@@ -9,6 +9,9 @@ import { toast } from '../ui/toast';
 const ICE: RTCConfiguration = { iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }] };
 interface Peer { pc: RTCPeerConnection; audio: HTMLAudioElement; polite: boolean; makingOffer: boolean }
 const peers = new Map<string, Peer>();
+const sig = { out: 0, in: 0, problems: [] as string[] };   // signalling counters for stats()
+const sendRtc = (to: string, data: unknown): void => { sig.out++; room.send({ t: 'rtc', to, data }); };
+const problem = (what: string, e: unknown): void => { const m = what + ': ' + String((e as Error)?.message ?? e).slice(0, 120); sig.problems.push(m); if (sig.problems.length > 12) sig.problems.shift(); console.warn('voice', m); };
 let local: MediaStream | null = null;
 let micOn = false;
 let host: HTMLElement | null = null;
@@ -28,10 +31,10 @@ function peerFor(id: string): Peer {
   if (local) for (const t of local.getAudioTracks()) pc.addTrack(t, local);
   else pc.addTransceiver('audio', { direction: 'recvonly' });
   pc.ontrack = (e) => { audio.srcObject = e.streams[0] ?? new MediaStream([e.track]); void audio.play().catch(() => { /* needs a gesture; the mic button was one */ }); };
-  pc.onicecandidate = (e) => { if (e.candidate) room.send({ t: 'rtc', to: id, data: { candidate: e.candidate.toJSON() } }); };
+  pc.onicecandidate = (e) => { if (e.candidate) sendRtc(id, { candidate: e.candidate.toJSON() }); };
   pc.onnegotiationneeded = async () => {
-    try { p!.makingOffer = true; await pc.setLocalDescription(); room.send({ t: 'rtc', to: id, data: { description: pc.localDescription } }); }
-    catch (e) { console.warn('voice offer', e); }
+    try { p!.makingOffer = true; await pc.setLocalDescription(); sendRtc(id, { description: pc.localDescription }); }
+    catch (e) { problem('offer', e); }
     finally { p!.makingOffer = false; }
   };
   pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed') { toast('Voice: could not reach one player (their network blocks it).', 'info', 4000); } bus.emit('voice:state'); };
@@ -40,6 +43,7 @@ function peerFor(id: string): Peer {
 
 async function onSignal({ from, data }: { from: string; data: { description?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit } }): Promise<void> {
   if (!from || !data) return;
+  sig.in++;
   const p = peerFor(from);
   const { pc } = p;
   try {
@@ -47,11 +51,11 @@ async function onSignal({ from, data }: { from: string; data: { description?: RT
       const offerCollision = data.description.type === 'offer' && (p.makingOffer || pc.signalingState !== 'stable');
       if (offerCollision && !p.polite) return;
       await pc.setRemoteDescription(data.description);
-      if (data.description.type === 'offer') { await pc.setLocalDescription(); room.send({ t: 'rtc', to: from, data: { description: pc.localDescription } }); }
+      if (data.description.type === 'offer') { await pc.setLocalDescription(); sendRtc(from, { description: pc.localDescription }); }
     } else if (data.candidate) {
       try { await pc.addIceCandidate(data.candidate); } catch (e) { if (!offerIgnored(p)) throw e; }
     }
-  } catch (e) { console.warn('voice signal', e); }
+  } catch (e) { problem('signal', e); }
 }
 const offerIgnored = (p: Peer) => !p.polite;
 
@@ -86,6 +90,21 @@ export const voice = {
   },
   /** leaving the room: everything down */
   hangUpAll(): void { this.off(); for (const id of [...peers.keys()]) drop(id); },
+  /** per player: the connection state and the audio bytes sent and received so far (Settings, the probes) */
+  async stats(): Promise<{ id: string; state: string; signaling: string; ice: string; sent: number; received: number; sig: typeof sig }[]> {
+    const out: { id: string; state: string; signaling: string; ice: string; sent: number; received: number; sig: typeof sig }[] = [];
+    for (const [id, p] of peers) {
+      let sent = 0, received = 0;
+      try {
+        (await p.pc.getStats()).forEach((r: { type?: string; kind?: string; bytesSent?: number; bytesReceived?: number }) => {
+          if (r.type === 'outbound-rtp' && r.kind === 'audio') sent += r.bytesSent ?? 0;
+          if (r.type === 'inbound-rtp' && r.kind === 'audio') received += r.bytesReceived ?? 0;
+        });
+      } catch { /* closed */ }
+      out.push({ id, state: p.pc.connectionState, signaling: p.pc.signalingState, ice: p.pc.iceConnectionState, sent, received, sig });
+    }
+    return out;
+  },
 };
 
 bus.on<{ from: string; data: unknown }>('room:rtc', (m) => { void onSignal(m as Parameters<typeof onSignal>[0]); });

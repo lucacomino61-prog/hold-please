@@ -25,6 +25,7 @@ import { radioOn, toggleRadio } from '../os/apps/radio';
 import { rival, RIVAL_NAME } from '../game/rival';
 import { currentRank, RANKS } from '../game/ranks';
 import { lookFor } from '../game/colleagues';
+import { drawCarpet, drawCity, drawFloorSign, floorFor, floorTheme, FLOORS } from './floors';
 
 type Desk = { index: number; pos: THREE.Vector3; seat: THREE.Vector3; screen: THREE.Vector3; facing: 1 | -1; hit: THREE.Mesh; person: Person | null; scr: THREE.Mesh; app: string };
 type Prop = { mesh: THREE.Mesh; kind: string; vel: THREE.Vector3; r: number; flying: boolean; held: boolean };
@@ -73,8 +74,19 @@ let door: THREE.Mesh | null = null;
 let ringingName: string | null = null;
 
 // floors: every three days survived the team moves up a floor (the walls change colour)
-export function floorFor(day: number): number { return 7 + Math.floor((day - 1) / 3); }
-const FLOOR_WALLS = ['#ece9e2', '#dfe6e3', '#ebe2e2', '#e2e5ec', '#efe9da'];
+export { floorFor } from './floors';
+// the floor's own look (floors.ts): textures redrawn in place, the lights retinted, its furniture in one group
+let carpetTex: THREE.CanvasTexture | null = null;
+let cityTex: THREE.CanvasTexture | null = null;
+let signTex: THREE.CanvasTexture | null = null;
+let hemiLight: THREE.HemisphereLight | null = null;
+let keyLight: THREE.DirectionalLight | null = null;
+const ceilingLamps: THREE.PointLight[] = [];
+const ceilingFans: THREE.Object3D[] = [];
+const decorBoxes: THREE.Box3[] = [];
+let decorGroup: THREE.Group | null = null;
+let decorGen = 0;
+let floorShown = -1;
 const HEADLINES = [
   ['HARBOUR NEWS', 'Moon sold for the ninth time this week'],
   ['HARBOUR NEWS', 'Goose elected to the port authority'],
@@ -225,14 +237,9 @@ function makeScreens(): void {
 
 let M: Record<string, THREE.MeshStandardMaterial>;
 function makeMaterials(): void {
-  const carpet = canvasTex(256, 256, (g) => {
-    g.fillStyle = '#4a5162'; g.fillRect(0, 0, 256, 256);
-    g.fillStyle = '#444b5b'; g.fillRect(0, 0, 128, 128); g.fillRect(128, 128, 128, 128);
-    for (let i = 0; i < 2600; i++) { g.fillStyle = Math.random() < 0.5 ? '#515869' : '#3f4656'; g.fillRect(Math.random() * 256, Math.random() * 256, 2, 1); }
-    for (let y = 0; y < 256; y += 16) { g.fillStyle = 'rgba(255,255,255,.025)'; g.fillRect(0, y, 256, 2); }
-    for (let i = 0; i < 3; i++) { g.fillStyle = 'rgba(20,16,10,.09)'; g.beginPath(); g.ellipse(Math.random() * 256, Math.random() * 256, 10 + Math.random() * 22, 6 + Math.random() * 12, Math.random() * 3, 0, Math.PI * 2); g.fill(); } // the stains
-    g.strokeStyle = '#3a4150'; g.lineWidth = 2; g.strokeRect(1, 1, 254, 254);
-  }, [12, 9]);
+  // the carpet and the view belong to the floor (floors.ts): drawn for the first floor here, redrawn on promotion
+  const carpet = canvasTex(256, 256, (g) => drawCarpet(g, FLOORS[0]), [12, 9]);
+  carpetTex = carpet;
   const cork = canvasTex(128, 128, (g) => {
     g.fillStyle = '#c99a5b'; g.fillRect(0, 0, 128, 128);
     for (let i = 0; i < 1400; i++) { g.fillStyle = Math.random() < 0.5 ? '#b8894c' : '#d6a96a'; g.fillRect(Math.random() * 128, Math.random() * 128, 2, 2); }
@@ -252,18 +259,8 @@ function makeMaterials(): void {
     for (let y = 10; y < 80; y += 16) for (let x = 8; x < 248; x += 16) g.fillRect(x, y, 12, 12);
     g.fillRect(64, 74, 128, 12);
   });
-  const city = canvasTex(1024, 256, (g) => {
-    const sky = g.createLinearGradient(0, 0, 0, 256); sky.addColorStop(0, '#09101d'); sky.addColorStop(1, '#1b2b4a');
-    g.fillStyle = sky; g.fillRect(0, 0, 1024, 256);
-    g.fillStyle = '#f2a93b'; g.globalAlpha = 0.85; g.beginPath(); g.arc(760, 70, 26, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1;
-    let x = 0;
-    while (x < 1024) {
-      const w = 30 + Math.random() * 70, h = 60 + Math.random() * 150;
-      g.fillStyle = '#0d1527'; g.fillRect(x, 256 - h, w, h);
-      for (let wy = 256 - h + 8; wy < 248; wy += 12) for (let wx = x + 5; wx < x + w - 6; wx += 11) if (Math.random() > 0.5) { g.fillStyle = Math.random() > 0.3 ? '#f2d58a' : '#8fd3ff'; g.fillRect(wx, wy, 5, 6); }
-      x += w + 6;
-    }
-  });
+  const city = canvasTex(1024, 256, (g) => drawCity(g, FLOORS[0]));
+  cityTex = city;
   const note = canvasTex(64, 64, (g) => { g.fillStyle = '#ffe66d'; g.fillRect(0, 0, 64, 64); g.strokeStyle = '#8a7a2a'; g.lineWidth = 2; g.beginPath(); g.moveTo(10, 22); g.lineTo(54, 22); g.moveTo(10, 34); g.lineTo(46, 34); g.moveTo(10, 46); g.lineTo(38, 46); g.stroke(); });
   M = {
     carpet: mat('#ffffff', { map: carpet }), wall: mat('#cfc4ad'), ceiling: mat('#ffffff', { map: ceiling }), tube: new THREE.MeshStandardMaterial({ color: '#fff4dc', emissive: '#ffe9c4', emissiveIntensity: 1.6 }),
@@ -743,8 +740,10 @@ function build(): void {
 
   // warm key light with soft shadows, orange bounce from the carpet, the fixtures as point lights
   scene.add(new THREE.AmbientLight('#ffe6c4', 0.22));
-  scene.add(new THREE.HemisphereLight('#fff1d6', '#b8622a', 0.75));
+  hemiLight = new THREE.HemisphereLight('#fff1d6', '#b8622a', 0.75);
+  scene.add(hemiLight);
   const key = new THREE.DirectionalLight('#ffc48a', 1.35);
+  keyLight = key;
   key.position.set(6, 9, 4);
   key.castShadow = true;
   key.shadow.mapSize.set(2048, 2048);
@@ -755,7 +754,12 @@ function build(): void {
   const fill = new THREE.DirectionalLight('#ffd9b0', 0.18);
   fill.position.set(-8, 6, -6);
   scene.add(fill);
-  for (const [x, z] of [[-6, -4], [-6, 4], [6, -4], [6, 4]]) { const l = new THREE.PointLight('#ffc890', 7, 12, 2); l.position.set(x, 2.95, z); scene.add(l); }
+  for (const [x, z] of [[-6, -4], [-6, 4], [6, -4], [6, 4]]) { const l = new THREE.PointLight('#ffc890', 7, 12, 2); l.position.set(x, 2.95, z); scene.add(l); ceilingLamps.push(l); }
+  // the floor's own furniture and its sign on the west wall, above the lounge (applyFloor fills them)
+  decorGroup = new THREE.Group(); decorGroup.name = 'floor-decor'; scene.add(decorGroup);
+  signTex = canvasTex(512, 160, (g) => drawFloorSign(g, FLOORS[0], t(FLOORS[0].name)));
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.44), new THREE.MeshStandardMaterial({ map: signTex, emissive: '#ffffff', emissiveMap: signTex, emissiveIntensity: 0.25, roughness: 0.6 }));
+  sign.position.set(-11.95, 2.35, 4.4); sign.rotation.y = Math.PI / 2; scene.add(sign);
   const warm1 = new THREE.PointLight('#ffb070', 12, 9, 2); warm1.position.set(-9, 2.6, -6); scene.add(warm1);
   cloudMat = new THREE.SpriteMaterial({ color: '#7fd35a', transparent: true, opacity: 0.55, depthWrite: false });
 
@@ -1299,9 +1303,12 @@ function resize(): void {
 function showHint(html: string): void { if (!hint) return; hint.innerHTML = html; hint.hidden = false; }
 function showWalkHint(): void {
   if (touch) { showHint(state.phase === 'shift' ? t('Left stick: walk · drag the right side: look · SIT at a free PC') : t('Left stick: walk · drag the right side: look · SIT at a free desk to clock in')); return; }
+  // the keys are markup, so the words around them are translated as one line with {placeholders}
+  const k = (s: string) => `<kbd>${s}</kbd>`;
+  const kb = { wasd: k('W A S D'), ijkl: k('I J K L'), shift: k('Shift'), e: k('E'), f: k('F'), p: k('P') };
   showHint(state.phase === 'shift'
-    ? 'Click to look · <kbd>W A S D</kbd> walk (<kbd>I J K L</kbd> look) · <kbd>Shift</kbd> run · click: pick up / throw · <kbd>E</kbd> sit at a free PC · <kbd>F</kbd> and hold <kbd>P</kbd>… you know'
-    : 'Click to look around · <kbd>W A S D</kbd> walk · <kbd>I J K L</kbd> look · click a free desk (or press <kbd>E</kbd> near one) to sit · click a colleague to slap');
+    ? t('Click to look · {wasd} walk ({ijkl} look) · {shift} run · click: pick up / throw · {e} sit at a free PC', kb) + (settings.family ? '' : ' · ' + t('{f} and hold {p}… you know', kb))
+    : t('Click to look around · {wasd} walk · {ijkl} look · click a free desk (or press {e} near one) to sit · click a colleague to slap', kb));
 }
 
 // ---------- touch, gamepad and keyboard-only control of the walk ----------
@@ -1370,6 +1377,45 @@ function keyboardLook(dt: number): void {
 let boardLines: string[] | null = null;
 export function setWhiteboardLines(lines: string[] | null): void { boardLines = lines; }
 
+/** dress the room for today's floor: walls, carpet, the view, the light, the sign, the floor's own furniture */
+function applyFloor(): void {
+  const th = floorTheme();
+  if (th.n === floorShown) return;
+  floorShown = th.n;
+  M.wall.color.set(th.wall); M.wallLow.color.set(th.wallLow); M.rail.color.set(th.rail);
+  M.ceiling.color.set(th.ceiling); M.tube.color.set(th.tube); M.tube.emissive.set(th.tube);
+  const redraw = (tex: THREE.CanvasTexture | null, draw: (g: CanvasRenderingContext2D) => void) => { if (!tex) return; draw((tex.image as HTMLCanvasElement).getContext('2d')!); tex.needsUpdate = true; };
+  redraw(carpetTex, (g) => drawCarpet(g, th));
+  redraw(cityTex, (g) => drawCity(g, th));
+  redraw(signTex, (g) => drawFloorSign(g, th, t(th.name)));
+  if (hemiLight) { hemiLight.color.set(th.hemi[0]); hemiLight.groundColor.set(th.hemi[1]); }
+  keyLight?.color.set(th.key);
+  for (const l of ceilingLamps) l.color.set(th.lamp);
+  // the furniture: the old floor's goes (its cloned materials with it; the kit's geometry stays cached), the new
+  // floor's comes in once the kit has loaded it, unless the floor changed again meanwhile
+  const gen = ++decorGen;
+  for (const b of decorBoxes.splice(0)) { const i = obstacles.indexOf(b); if (i >= 0) obstacles.splice(i, 1); }
+  ceilingFans.length = 0;
+  if (decorGroup) {
+    for (const child of [...decorGroup.children]) {
+      decorGroup.remove(child);
+      child.traverse((o) => { const m = (o as THREE.Mesh).material; if (m) (Array.isArray(m) ? m : [m]).forEach((x) => x.dispose()); });
+    }
+  }
+  for (const [x, z, hw, hd] of th.boxes) { const b = new THREE.Box3(new THREE.Vector3(x - hw, 0, z - hd), new THREE.Vector3(x + hw, 2, z + hd)); decorBoxes.push(b); obstacles.push(b); }
+  // a fan hangs from a pivot over its own centre, so it turns in place
+  const next = new THREE.Group();
+  const pivots = th.fans.map(([x, z]) => { const p = new THREE.Group(); p.position.set(x, 2.62, z); next.add(p); return p; });
+  void Promise.all([
+    placeMany(next, th.decor),
+    ...pivots.map((p) => placeKit(p, { name: 'ceilingFan', x: 0, z: 0, y: 0, h: 0.56, colors: { metal: '#d9d9de', metalDark: '#2b2b31', wood: th.rail } })),
+  ]).then(() => {
+    if (gen !== decorGen || !decorGroup) return;
+    ceilingFans.push(...pivots);
+    for (const child of [...next.children]) decorGroup.add(child);
+  }).catch((e) => console.warn('floor furniture', e));
+}
+
 export function enterOffice(sit: (() => void) | null, opts: { standFrom?: boolean } = {}): void {
   if (!officeAvailable()) { sit?.(); return; }
   build();
@@ -1380,8 +1426,7 @@ export function enterOffice(sit: (() => void) | null, opts: { standFrom?: boolea
   onSit = sit;
   dolly = null;
   resize();
-  M.wall.color.set(FLOOR_WALLS[(floorFor(state.day) - 7) % FLOOR_WALLS.length]);
-  M.wallLow.color.copy(M.wall.color).multiplyScalar(0.82);
+  applyFloor();
   if (whiteboardTex) {
     const lines = boardLines ?? [`Floor ${floorFor(state.day)} — day ${state.day}`, '1. Answer the phone', '2. Be nice', '3. Sell the Moon', `4. ${fmt(state.quota)} or else`];
     const t = textTexture(lines, 512, 384, '#fdfdfb', '#1a1a1a', `bold ${lines.length > 5 ? 26 : 34}px "Comic Sans MS", "Segoe Print", Arial`);
@@ -1634,8 +1679,10 @@ export function setRemotePlayers(list: RemotePlayer[]): void {
     }
     p.group.visible = true;
     const d = desks[Math.max(0, Math.min(desks.length - 1, r.seat | 0))];
-    if (pd.desk !== d) { seat(p, d); setScreen(d, r.app ?? 'phone'); }
-    else if (r.app && d.app !== r.app) setScreen(d, r.app);
+    // streamer mode: a friend's desk always shows the screensaver
+    const app = settings.streamer ? 'idle' : r.app;
+    if (pd.desk !== d) { seat(p, d); setScreen(d, app ?? 'phone'); }
+    else if (app && d.app !== app) setScreen(d, app);
   });
   for (const [id, p] of remote) if (!seen.has(id)) {
     scene.remove(p.group);
@@ -1649,7 +1696,8 @@ export function setRemotePlayers(list: RemotePlayer[]): void {
 export function setRemoteScreens(map: Record<string, string>): void {
   for (const [id, app] of Object.entries(map)) {
     const p = remote.get(id); const d = p && (p as Person & { desk?: Desk }).desk;
-    if (d) setScreen(d, app);
+    // streamer mode: a friend's screen shows the screensaver, never what they have open
+    if (d) setScreen(d, settings.streamer ? 'idle' : app);
   }
 }
 
@@ -1758,7 +1806,7 @@ function sitAt(desk: Desk): void {
 }
 
 function fart(): void {
-  if (!cloudMat) return;
+  if (!cloudMat || settings.family) return;   // family mode: no gas on the floor
   sfx.fart();
   const back = forward().multiplyScalar(-0.5);
   for (let i = 0; i < 7; i++) {
@@ -1856,7 +1904,7 @@ function updateGags(dt: number): void {
     (c.sprite.material as THREE.SpriteMaterial).opacity = 0.55 * (1 - k);
     if (k >= 1) { scene.remove(c.sprite); (c.sprite.material as THREE.SpriteMaterial).dispose(); clouds.splice(i, 1); }
   }
-  if (peeing && mode === 'walk') {
+  if (peeing && mode === 'walk' && !settings.family) {
     dropTimer += dt;
     if (dropTimer > 45) {
       dropTimer = 0;
@@ -1933,6 +1981,15 @@ export const officeDebug = {
   cctvLook(x: number, y: number, z: number, lx: number, ly: number, lz: number): void { followPlayer(null); cctv.position.set(x, y, z); cctv.lookAt(lx, ly, lz); },
   rankPerks(): void { applyRankPerks(); },
   perkCount(): number { return perkObjs.length; },
+  // the floor the room is dressed as, and what its furniture added
+  floor(): { n: number; wall: string; carpetTop: string; decor: number; fans: number; boxes: number; obstacles: number } {
+    const c = carpetTex?.image as HTMLCanvasElement | undefined;
+    const px = c?.getContext('2d')?.getImageData(130, 2, 1, 1).data;
+    return { n: floorShown, wall: '#' + M.wall.color.getHexString(), carpetTop: px ? `rgb(${px[0]},${px[1]},${px[2]})` : '', decor: decorGroup?.children.length ?? 0, fans: ceilingFans.length, boxes: decorBoxes.length, obstacles: obstacles.length };
+  },
+  /** which app every desk shows (a friend's desk in streamer mode should say idle) */
+  screens(): string[] { return desks.map((d) => d.app); },
+  remoteDesk(id: string): number { const p = remote.get(id); const d = p && (p as Person & { desk?: Desk }).desk; return d ? desks.indexOf(d) : -1; },
   fxCount(): number { return fx.length; },
   doom(on: boolean): void { setReviewDoom(on); },
   doomOn(): boolean { return !!doom; },
@@ -1977,6 +2034,7 @@ function frame(dt: number, t: number): void {
   for (const p of people) p.update(dt, t);
   // blades spin; the head sweeps the room like every wall fan does
   for (const b of fans) { b.rotation.z += dt * 0.012; const f = b.parent!; f.rotation.y = (f.userData.ry as number) + Math.sin(t * 0.0004 + f.position.x) * 0.6; }
+  for (const f of ceilingFans) f.rotation.y += dt * 0.0035;
   saverClock += dt;
   if (saverClock > 110) { saverClock = 0; const ts = t / 1000; for (const s of SAVERS) { s.draw(s.c.getContext('2d')!, ts); s.tex.needsUpdate = true; } }
   updateProps(dt);

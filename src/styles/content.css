@@ -289,6 +289,18 @@
 .review__slide .worst { display: grid; grid-template-columns: auto 1fr; gap: 1rem; align-items: start; }
 .review__slide .worst__still { border: 6px solid #fff; box-shadow: 0 6px 16px -6px oklch(0 0 0 / .5); transform: rotate(-3deg); background: #fff; filter: saturate(1.4) contrast(1.1); }
 .review__slide .worst__text { display: grid; gap: .5rem; }
+/* the worst moment on tape: the webcam still, a REC stamp, subtitles in time with the voices */
+.review__slide .tape__screen { position: relative; width: 320px; max-width: 100%; aspect-ratio: 4 / 3; background: #0b0f14; border: 6px solid #1b2432; border-radius: 6px; overflow: hidden; box-shadow: 0 8px 18px -8px oklch(0 0 0 / .6); }
+.review__slide .tape__still { display: block; width: 100%; height: 100%; object-fit: cover; filter: saturate(1.3) contrast(1.1); }
+.review__slide .tape__nosignal { display: grid; place-items: center; height: 100%; color: #8a94a6; font: 700 15px/1 var(--display, Impact, sans-serif); letter-spacing: .2em; background: repeating-linear-gradient(0deg, #11161d 0 2px, #0b0f14 2px 4px); }
+.review__slide .tape__rec { position: absolute; top: 8px; left: 10px; color: #ff4d4d; font: 700 12px/1 ui-monospace, Consolas, monospace; text-shadow: 0 1px 0 #000; }
+.review__slide .tape__cam { position: absolute; top: 8px; right: 10px; color: #e8ecf2; font: 700 11px/1 ui-monospace, Consolas, monospace; opacity: .85; }
+.review__slide .tape__sub { position: absolute; left: 8px; right: 8px; bottom: 8px; color: #fff; font: 600 13px/1.3 var(--body, system-ui, sans-serif); text-shadow: 0 1px 2px #000, 0 0 6px #000; text-align: center; }
+.review__slide .tape--playing .tape__rec { animation: tape-blink 1s steps(2) infinite; }
+.review__slide .tape--playing .tape__still { animation: tape-jitter .2s steps(2) infinite; }
+@keyframes tape-blink { 50% { opacity: .25; } }
+@keyframes tape-jitter { 50% { transform: translateY(1px); } }
+html[data-motion="off"] .review__slide .tape--playing * { animation: none !important; }
 @media (max-width: 640px) { .review__slide .worst { grid-template-columns: 1fr; } .review__door { top: auto; bottom: 90px; transform: none; } }
 /* the nuclear drill */
 .nuke-ev { position: fixed; inset: 0; z-index: 72; display: grid; place-items: start center; padding-top: 8vh; pointer-events: none; background: repeating-linear-gradient(45deg, oklch(70% .18 85 / .25) 0 30px, oklch(0 0 0 / .25) 30px 60px); animation: raid-flash .6s steps(2) infinite; }
@@ -344,6 +356,15 @@ body.windy .os__wall { animation: windy-wall .8s ease-in-out infinite alternate;
 .codex__head h3 { margin: 0; font-size: 18px; }
 .codex__portrait { width: 120px; height: 120px; border-radius: 16px; overflow: hidden; background: #1b4652; display: grid; place-items: center; color: #fff; font-size: 40px; font-style: normal; }
 .codex__vip { font-size: 11px; font-weight: 800; color: #c9a227; }
+/* Star Registry and Penguin Courier */
+.sapp--stars .stars__sky { display: block; width: 100%; max-width: 560px; height: auto; aspect-ratio: 560 / 320; border-radius: 8px; cursor: crosshair; margin-block: .5rem; box-shadow: inset 0 0 0 1px oklch(100% 0 0 / .08); }
+.sapp--stars .stars__hint { font-size: .85rem; }
+.sapp--courier .courier__customs { border: 2px solid #1f6f8b; border-radius: 10px; padding: .6rem .8rem; margin-block: .5rem; background: oklch(95% .03 220); }
+.sapp--courier .courier__customs h3, .sapp--courier .courier__h { margin: .2rem 0 .4rem; font-size: .95rem; }
+.sapp--courier .courier__list { list-style: none; margin: 0; padding: 0; display: grid; gap: .25rem; font-size: .88rem; }
+.sapp--courier .courier__item--cleared { color: #2f8a4a; font-weight: 600; }
+.sapp--courier .courier__item--seized { color: #c73b3b; text-decoration: line-through; }
+.codex__baiter { margin-left: .4rem; font-size: 11px; font-weight: 800; color: #d94b4b; }
 .codex__stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .codex__stats div { display: grid; line-height: 1.1; }
 .codex__stats b { font-family: var(--display); font-size: 22px; }
@@ -397,3 +418,28 @@ body.windy .os__wall { animation: windy-wall .8s ease-in-out infinite alternate;
 .phone__ring-portrait .portrait-initials { border-radius: 50%; }
 .codex__credit { font-size: 10px; color: var(--ink-3); margin-top: .3rem; max-width: 24rem; overflow-wrap: anywhere; }
 .creator__file input { display: block; margin-top: .3rem; font-size: 12px; }
+
+/* the elevator, the morning after a promotion (ui/elevator.ts): shut steel doors, a climbing number, the chime */
+.elevator { position: fixed; inset: 0; z-index: 95; display: grid; grid-template-rows: auto 1fr; background: #121418; animation: fade-in .18s ease-out; cursor: pointer; }
+.elevator__head { display: grid; justify-items: center; gap: .35rem; padding: clamp(1.2rem, 4vh, 2.4rem) 1rem clamp(.9rem, 3vh, 1.6rem); background: linear-gradient(#1d2026, #121418); border-bottom: 4px solid #2a2e36; position: relative; z-index: 1; }
+.elevator__display { display: flex; align-items: center; gap: .6rem; padding: .25rem 1.1rem; border-radius: 8px; background: #0a0b0d; box-shadow: inset 0 0 0 2px #2a2e36, 0 0 28px oklch(80% .16 70 / .16); }
+.elevator__arrow { color: var(--amber); font-size: 1.35rem; line-height: 1; }
+.elevator__n { font-family: var(--display); font-weight: 400; font-size: clamp(3rem, 9vw, 6rem); line-height: 1; min-width: 2ch; text-align: center; color: var(--amber); text-shadow: 0 0 16px oklch(80% .16 70 / .5); }
+.elevator__name { font-family: var(--display); font-size: var(--step-2); letter-spacing: .06em; color: #e9e4d8; text-align: center; }
+.elevator__doors { position: relative; overflow: hidden; }
+.elevator__door { position: absolute; top: 0; bottom: 0; width: 50%; transition: transform .75s cubic-bezier(.65, 0, .35, 1);
+  background: repeating-linear-gradient(90deg, rgb(255 255 255 / .045) 0 2px, transparent 2px 6px), linear-gradient(90deg, #767c84, #c2c7cd 44%, #9aa0a8 72%, #7a8088); }
+.elevator__door--l { left: 0; box-shadow: inset -3px 0 0 #4b5057; }
+.elevator__door--r { right: 0; box-shadow: inset 3px 0 0 #4b5057; }
+.elevator.is-ding .elevator__n { animation: lift-ding .45s ease-out; }
+@keyframes lift-ding { from { transform: scale(1.16); filter: brightness(1.4); } }
+.elevator.is-open { background: transparent; }
+.elevator.is-open .elevator__door--l { transform: translateX(-100%); }
+.elevator.is-open .elevator__door--r { transform: translateX(100%); }
+.elevator.is-open .elevator__head { opacity: 0; transition: opacity .45s .35s; }
+.elevator.is-done { opacity: 0; transition: opacity .25s ease-out; pointer-events: none; }
+.elevator__skip { position: absolute; right: 1rem; bottom: 1rem; z-index: 2; --btn-ink: #e9e4d8; --btn-bg: oklch(0 0 0 / .45); }
+html[data-motion="off"] .elevator__door, html[data-motion="off"] .elevator__head { transition: none; }
+
+/* streamer mode: a code being typed shows as dots (the lobby and the saves code in Settings) */
+input.is-secret { -webkit-text-security: disc; }

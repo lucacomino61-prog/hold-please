@@ -1,0 +1,5 @@
+# Cloudflare Pages response headers. Cross-origin isolation lets the HD caller voices run on several CPU threads;
+# "credentialless" keeps Wikimedia photos, Google Fonts and the room server working without opting in.
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: credentialless

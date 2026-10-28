@@ -6,7 +6,10 @@ import { sfx } from '../../game/sound';
 import { icon } from '../icons';
 import { registerApp } from '../registry';
 import { openWindow, type Win } from '../windows';
-import { MONTHS, NOBEL_FIELDS, SKIES, STATIONS } from '../../game/values';
+import { MONTHS, NOBEL_FIELDS, SKIES, STATIONS, starOf } from '../../game/values';
+import { CONSTELLATIONS, SKY } from '../../game/sky';
+import { bookCrate, clearCustoms, cratesToday, customsCrate, CRATE_PAYOUT } from '../../game/courier';
+import { t } from '../../i18n';
 
 const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 
@@ -39,19 +42,21 @@ const LABELS: Record<ScamDef['needs'], string> = {
   toothcount: 'how many teeth the ghost has left',
   zonehours: 'how many hours ahead (or behind)',
   viewcode: 'the six-digit FarView code on their screen',
+  starclue: 'what their star looks like, and where',
+  crateword: 'the password they want on the crate',
 };
 
 function head(s: ScamDef): string {
   return `<div class="sapp__head"><span class="tile" style="--tile:${s.color}">${icon(s.glyph)}</span><div><h2>${s.name}</h2><p>${s.tagline}</p></div></div>
-    <p class="sapp__blurb">${s.blurb}</p>
-    <div class="sapp__ask"><b>Ask the caller for</b>${LABELS[s.needs]}</div>`;
+    <p class="sapp__blurb">${t(s.blurb)}</p>
+    <div class="sapp__ask"><b>${t('Ask the caller for')}</b>${t(LABELS[s.needs])}</div>`;
 }
 
 function genericForm(s: ScamDef, body: HTMLElement, onOk: (typed: string, amount: number) => void): void {
   body.innerHTML = `<div class="sapp">${head(s)}
     <form class="sapp__form">
-      <label>${LABELS[s.needs]}<input type="text" name="v" autocomplete="off" spellcheck="false" placeholder="Type it exactly as they said it…" /></label>
-      <button class="btn" type="submit">Submit</button>
+      <label>${t(LABELS[s.needs])}<input type="text" name="v" autocomplete="off" spellcheck="false" placeholder="${t('Type it exactly as they said it…')}" /></label>
+      <button class="btn" type="submit">${t('Submit')}</button>
     </form>
     <div class="sapp__status" aria-live="polite"></div></div>`;
   const form = body.querySelector<HTMLFormElement>('form')!;
@@ -61,15 +66,17 @@ function genericForm(s: ScamDef, body: HTMLElement, onOk: (typed: string, amount
     const typed = (form.elements.namedItem('v') as HTMLInputElement).value;
     const r = claim(s.needs, typed);
     status.className = 'sapp__status ' + (r.ok ? 'sapp__status--ok' : 'sapp__status--bad');
-    if (!r.ok) { status.textContent = r.reason ?? 'No.'; body.closest('.win')?.classList.add('win--shake'); setTimeout(() => body.closest('.win')?.classList.remove('win--shake'), 350); return; }
-    if (r.amount) status.textContent = `Done. $${r.amount} to the team.`;
+    if (!r.ok) { status.textContent = t(r.reason ?? 'No.'); body.closest('.win')?.classList.add('win--shake'); setTimeout(() => body.closest('.win')?.classList.remove('win--shake'), 350); return; }
+    if (r.amount) status.textContent = t('Done. {x} to the team.', { x: '$' + r.amount });
     onOk(typed, r.amount ?? 0);
   });
 }
 
 function registerScam(s: ScamDef, render: (body: HTMLElement, win: Win) => void): void {
   registerApp({ id: 'scam-' + s.id, name: s.name, color: s.color, glyph: s.glyph, kind: 'scam', scam: s.id, open: () => {
-    openWindow({ id: 'scam-' + s.id, title: s.name, glyph: icon(s.glyph), color: s.color, w: 420, h: 520 }, render);
+    // the sky chart and the courier's two forms need more room than a one-field product
+    const size = s.id === 'stars' ? { w: 600, h: 640 } : s.id === 'courier' ? { w: 460, h: 600 } : { w: 420, h: 520 };
+    openWindow({ id: 'scam-' + s.id, title: s.name, glyph: icon(s.glyph), color: s.color, ...size }, render);
   } });
 }
 
@@ -99,6 +106,8 @@ for (const s of SCAMS) {
   else if (s.id === 'ghostdentist') registerScam(s, renderTeeth);
   else if (s.id === 'timezone') registerScam(s, renderZone);
   else if (s.id === 'remote') registerScam(s, renderRemote);
+  else if (s.id === 'stars') registerScam(s, renderStars);
+  else if (s.id === 'courier') registerScam(s, renderCourier);
   else registerScam(s, (body) => genericForm(s, body, () => { /* paid in claim() */ }));
 }
 
@@ -107,7 +116,7 @@ const byId = (id: ScamDef['id']) => SCAMS.find((x) => x.id === id)!;
 function fileBtn(label: string, extra = ''): string { return `<div class="cluster"><button class="btn btn--money" type="button" data-file>${label}</button>${extra}</div><div class="sapp__status" aria-live="polite"></div>`; }
 function claimAndTell(body: HTMLElement, kind: ScamDef['needs'], typed: string, okText: string): boolean {
   const r = claim(kind, typed);
-  statusOf(body, r.ok, r.ok ? `${okText} ${r.amount ? '$' + r.amount + ' to the team.' : ''}` : r.reason ?? 'No.');
+  statusOf(body, r.ok, r.ok ? `${okText} ${r.amount ? '$' + r.amount + ' to the team.' : ''}` : t(r.reason ?? 'No.'));
   return r.ok;
 }
 // Weather Subscription: click tomorrow's sky in the forecast strip
@@ -237,10 +246,137 @@ function renderRemote(body: HTMLElement): void {
   code.addEventListener('input', () => { const d = code.value.replace(/\D/g, '').slice(0, 6); code.value = d.length > 3 ? d.slice(0, 3) + '-' + d.slice(3) : d; });
   body.querySelector('[data-file]')!.addEventListener('click', () => {
     const r = claim('viewcode', code.value);
-    statusOf(body, r.ok, r.ok ? `Connected. ${r.amount ? '$' + r.amount + ' for the clean.' : ''}` : r.reason ?? 'No.');
+    statusOf(body, r.ok, r.ok ? `Connected. ${r.amount ? '$' + r.amount + ' for the clean.' : ''}` : t(r.reason ?? 'No.'));
     if (r.ok) { screen.hidden = false; (body.querySelector('[data-file]') as HTMLButtonElement).disabled = true; }
   });
   body.querySelector('[data-clean]')!.addEventListener('click', () => { const d = body.querySelector<HTMLElement>('.remote__desk')!; d.innerHTML = '<span>✨ Clean.</span><span>🌙 moon_deed.pdf</span>'; sfx.cash(); });
+}
+
+// ---- Star Registry: find the caller's star on the chart; every reply they give buys one reading (the original's
+// IP Geolocation, traced on a globe while the caller stays convinced, here on a cartoon sky) ----
+const STAR_COL: Record<string, string> = { white: '#f4f6ff', blue: '#9cc4ff', orange: '#ffb36b', red: '#ff8a7a', yellow: '#ffe28a' };
+const READ_R = [92, 54, 28];   // each reading's circle, smaller each time (px on the 560 × 320 chart)
+function renderStars(body: HTMLElement): void {
+  const s = byId('stars');
+  body.innerHTML = `<div class="sapp sapp--stars">${head(s)}
+    <canvas class="stars__sky" width="560" height="320" aria-label="Sky chart. Click where the caller's star is."></canvas>
+    <div class="cluster"><button type="button" class="btn" data-reading>Take a reading (0/3)</button><button type="button" class="btn btn--money" data-file disabled>Register this star</button><span class="muted stars__hint" aria-live="polite"></span></div>
+    <div class="sapp__status" aria-live="polite"></div></div>`;
+  const cv = body.querySelector<HTMLCanvasElement>('canvas')!;
+  const g = cv.getContext('2d')!;
+  const W = cv.width, H = cv.height;
+  const readBtn = body.querySelector<HTMLButtonElement>('[data-reading]')!;
+  const regBtn = body.querySelector<HTMLButtonElement>('[data-file]')!;
+  const hint = body.querySelector<HTMLElement>('.stars__hint')!;
+  let readings: { x: number; y: number; r: number }[] = [];
+  let lastReplies = -1, callKey = 0, reveal = false;
+  let pin: { x: number; y: number } | null = null;
+  const target = (): number | undefined => { const c = currentCall(); return c ? starOf.get(c.ctx.values) : undefined; };
+  const replies = (): number => currentCall()?.ctx.lines.filter((l) => l.who !== 'you').length ?? 0;
+  const draw = (): void => {
+    const c = currentCall();
+    const key = c?.record.startedAt ?? 0;
+    if (key !== callKey) { callKey = key; readings = []; pin = null; lastReplies = -1; reveal = false; }
+    g.fillStyle = '#0b1230'; g.fillRect(0, 0, W, H);
+    g.strokeStyle = 'rgba(140,170,255,.07)'; g.lineWidth = 1;
+    for (let x = 40; x < W; x += 40) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }
+    for (let y = 40; y < H; y += 40) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
+    for (const con of CONSTELLATIONS) {
+      const pts = con.stars.map(([dx, dy]) => [(con.x + dx) * W, (con.y + dy) * H] as const);
+      g.strokeStyle = 'rgba(170,190,255,.45)'; g.lineWidth = 1.2; g.beginPath();
+      pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke();
+      g.fillStyle = '#dfe6ff';
+      for (const [x, y] of pts) { g.beginPath(); g.arc(x, y, 2.4, 0, Math.PI * 2); g.fill(); }
+      g.fillStyle = 'rgba(200,214,255,.85)'; g.font = '600 11px Inter, system-ui, sans-serif'; g.textAlign = 'center';
+      g.fillText(con.name.replace(/^the /, '').toUpperCase(), con.x * W, con.y * H + 0.13 * H);
+    }
+    for (const st of SKY) { g.fillStyle = STAR_COL[st.colour]; g.beginPath(); g.arc(st.x * W, st.y * H, st.size * 1.7, 0, Math.PI * 2); g.fill(); }
+    readings.forEach((r, i) => { g.strokeStyle = `rgba(255,209,102,${0.4 + 0.25 * i})`; g.setLineDash([6, 4]); g.lineWidth = 1.6; g.beginPath(); g.arc(r.x, r.y, r.r, 0, Math.PI * 2); g.stroke(); });
+    g.setLineDash([]);
+    const t = target();
+    if (reveal && t !== undefined) { const st = SKY[t]; g.strokeStyle = '#3fd36f'; g.lineWidth = 2; g.beginPath(); g.arc(st.x * W, st.y * H, 9, 0, Math.PI * 2); g.stroke(); }
+    if (pin) { g.strokeStyle = '#ffd166'; g.lineWidth = 2; g.beginPath(); g.moveTo(pin.x - 7, pin.y); g.lineTo(pin.x + 7, pin.y); g.moveTo(pin.x, pin.y - 7); g.lineTo(pin.x, pin.y + 7); g.stroke(); }
+    const given = !!c?.ctx.given.starclue;
+    const done = !!c?.paid.has('stars');
+    const n = replies();
+    readBtn.disabled = !given || done || readings.length >= 3 || n <= lastReplies || c?.status !== 'live';
+    readBtn.textContent = `Take a reading (${readings.length}/3)`;
+    regBtn.disabled = !pin || !given || done;
+    hint.textContent = !c ? 'No caller on the line.' : done ? '' : !given ? 'Ask the caller what their star looks like.' : readings.length >= 3 ? 'Three readings. Click the star, then Register.' : n <= lastReplies ? 'Keep them talking for the next reading.' : 'A reading is ready.';
+  };
+  readBtn.addEventListener('click', () => {
+    const t = target();
+    if (t === undefined || readBtn.disabled) return;
+    const st = SKY[t];
+    const r = READ_R[readings.length];
+    const a = Math.random() * Math.PI * 2, off = Math.random() * r * 0.6;
+    readings.push({ x: st.x * W + Math.cos(a) * off, y: st.y * H + Math.sin(a) * off, r });
+    lastReplies = replies();
+    sfx.click();
+    draw();
+  });
+  cv.addEventListener('click', (e) => {
+    const rect = cv.getBoundingClientRect();
+    pin = { x: ((e.clientX - rect.left) * W) / rect.width, y: ((e.clientY - rect.top) * H) / rect.height };
+    draw();
+  });
+  regBtn.addEventListener('click', () => {
+    const idx = target(), c = currentCall();
+    if (idx === undefined || !c || !pin) return;
+    const r = claim('starclue', c.ctx.given.starclue ?? '');
+    if (!r.ok) { statusOf(body, false, t(r.reason ?? 'No.')); return; }
+    const st = SKY[idx];
+    const d = Math.hypot(pin.x - st.x * W, pin.y - st.y * H);
+    const prize = d < 9 ? 800 : Math.max(0, Math.round((800 * (1 - d / 120)) / 10) * 10);
+    if (prize > 0) payOut('stars', prize);
+    statusOf(body, prize > 0, prize >= 800 ? 'Direct hit. The star is registered in their name. $800 to the team.' : prize > 0 ? `Close enough for the paperwork. $${prize} to the team.` : 'That is not their star. Nobody pays for the wrong star.');
+    reveal = true;
+    draw();
+  });
+  draw();
+  // new replies unlock readings: redraw while the window is open
+  const iv = setInterval(() => { if (!body.isConnected) { clearInterval(iv); return; } draw(); }, 600);
+}
+
+// ---- Penguin Courier: book the crate with the caller's password; clear it when Customs rings (the original's
+// two-call Money Mule, here with penguins) ----
+function renderCourier(body: HTMLElement): void {
+  const s = byId('courier');
+  body.innerHTML = `<div class="sapp sapp--courier">${head(s)}
+    <form class="sapp__form" data-book><label>Password for the crate<input type="text" name="v" autocomplete="off" spellcheck="false" placeholder="${t('Type it exactly as they said it…')}" /></label><button class="btn" type="submit">Book the crate</button></form>
+    <div class="courier__customs" hidden><h3>Port Fortune Customs is on the line</h3><p class="courier__crate"></p>
+      <form class="sapp__form" data-clear><label>Password on the crate<input type="text" name="w" autocomplete="off" spellcheck="false" /></label><button class="btn btn--money" type="submit">Clear customs</button></form></div>
+    <h3 class="courier__h">Today's crates</h3><ul class="courier__list"></ul>
+    <div class="sapp__status" aria-live="polite"></div></div>`;
+  const book = body.querySelector<HTMLFormElement>('[data-book]')!, clearF = body.querySelector<HTMLFormElement>('[data-clear]')!;
+  const customs = body.querySelector<HTMLElement>('.courier__customs')!, list = body.querySelector<HTMLElement>('.courier__list')!, crateP = body.querySelector<HTMLElement>('.courier__crate')!;
+  const WHERE: Record<string, string> = { shipped: 'on its way to the dock · Customs will call', 'at-customs': 'at Customs', cleared: `cleared · $${CRATE_PAYOUT}`, seized: 'seized' };
+  const draw = (): void => {
+    const at = customsCrate();
+    customs.hidden = !at;
+    book.hidden = !!at;
+    if (at) crateP.textContent = `Crate #${at.id} for ${at.owner}. It is honking. Officer Brine wants the password.`;
+    const all = cratesToday();
+    list.innerHTML = all.length ? all.map((c) => `<li class="courier__item courier__item--${c.status}">Crate #${c.id} · ${esc(c.owner)} · ${WHERE[c.status]}</li>`).join('') : '<li class="muted">No crates today.</li>';
+  };
+  book.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const typed = (book.elements.namedItem('v') as HTMLInputElement).value;
+    const c = currentCall();
+    const r = claim('crateword', typed);
+    if (!r.ok || !c) { statusOf(body, false, t(r.reason ?? 'No.')); return; }
+    bookCrate(c.caller.name, c.ctx.given.crateword ?? typed);
+    statusOf(body, true, 'Crate booked and shipped. Port Fortune Customs will call about it this shift. Keep this window handy.');
+    draw();
+  });
+  clearF.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const out = clearCustoms((clearF.elements.namedItem('w') as HTMLInputElement).value);
+    statusOf(body, out.ok, out.text);
+    draw();
+  });
+  draw();
+  const iv = setInterval(() => { if (!body.isConnected) { clearInterval(iv); return; } draw(); }, 700);
 }
 
 function statusOf(body: HTMLElement, ok: boolean, text: string): void {
@@ -266,7 +402,7 @@ function renderEcho(body: HTMLElement): void {
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     const r = claim('echoword', input.value);
-    statusOf(body, r.ok, r.ok ? `Echo cancelled. ${r.amount ? '$' + r.amount + ' to the team.' : ''}` : r.reason ?? 'No.');
+    statusOf(body, r.ok, r.ok ? `Echo cancelled. ${r.amount ? '$' + r.amount + ' to the team.' : ''}` : t(r.reason ?? 'No.'));
     if (r.ok) form.querySelector('button')!.disabled = true;
   });
 }
@@ -298,7 +434,7 @@ function renderDream(body: HTMLElement): void {
   body.querySelector('[data-file]')!.addEventListener('click', () => {
     clearInterval(ticking);
     const r = claim('dreamcode', typed);
-    statusOf(body, r.ok, r.ok ? `Claim filed. ${r.amount ? '$' + r.amount + ' to the team.' : ''} Sweet dreams.` : r.reason ?? 'No.');
+    statusOf(body, r.ok, r.ok ? `Claim filed. ${r.amount ? '$' + r.amount + ' to the team.' : ''} Sweet dreams.` : t(r.reason ?? 'No.'));
     typed = ''; show();   // the pad is ready for the next dream either way
   });
   show();
@@ -321,7 +457,7 @@ function renderRainbow(body: HTMLElement): void {
   body.querySelector('[data-reset]')!.addEventListener('click', () => { picked.length = 0; draw(); });
   body.querySelector('[data-lease]')!.addEventListener('click', () => {
     const r = claim('colours', picked.join(' '));
-    statusOf(body, r.ok, r.ok ? `Rainbow leased. ${r.amount ? '$' + r.amount + ' to the team.' : ''} Visible from their garden.` : r.reason ?? 'No.');
+    statusOf(body, r.ok, r.ok ? `Rainbow leased. ${r.amount ? '$' + r.amount + ' to the team.' : ''} Visible from their garden.` : t(r.reason ?? 'No.'));
     if (!r.ok) { picked.length = 0; draw(); }
   });
   draw();
@@ -484,7 +620,7 @@ function remoteDesktop(body: HTMLElement, who: string, given: string, status: HT
       view.querySelector('[data-pay]')!.addEventListener('click', () => {
         const r = claim('fridgecode', given);
         if (r.ok) { status.className = 'sapp__status sapp__status--ok'; status.textContent = 'Repair billed. The hum is now in C major. $400 to the team.'; view.innerHTML = '<b>Paid.</b> Disconnect when you are done snooping.'; }
-        else { status.className = 'sapp__status sapp__status--bad'; status.textContent = r.reason ?? 'No.'; }
+        else { status.className = 'sapp__status sapp__status--bad'; status.textContent = t(r.reason ?? 'No.'); }
       });
     } else if (name === 'stash') {
       if (stash) { view.innerHTML = `<b>stash</b><pre>Already emptied. You have no shame.</pre>`; return; }

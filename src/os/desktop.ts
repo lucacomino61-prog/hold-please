@@ -9,6 +9,7 @@ import { allWindows, setWindowLayer } from './windows';
 import { coop } from '../net/coop';
 import { currentRank } from '../game/ranks';
 import { voice } from '../net/voice';
+import { shownCode } from '../game/modes';
 
 let os: HTMLElement | null = null;
 let wall: HTMLCanvasElement | null = null;
@@ -222,7 +223,7 @@ function updateHud(): void {
   const roomGroup = os.querySelector<HTMLElement>('.hud__group--room')!;
   roomGroup.hidden = !coop.on;
   if (coop.on) {
-    os.querySelector('.hud__room')!.textContent = coop.live ? `${coop.code()} · ${coop.online()} online` : `${coop.code()} · reconnecting`;
+    os.querySelector('.hud__room')!.textContent = coop.live ? `${shownCode(coop.code())} · ${coop.online()} online` : `${shownCode(coop.code())} · reconnecting`;
     roomGroup.classList.toggle('hud__group--off', !coop.live);
     roomGroup.title = coop.live ? 'The team total is shared with everyone in the room' : 'The room is unreachable: totals are local until it is back';
   }

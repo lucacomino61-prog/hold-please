@@ -2,11 +2,14 @@
 // put on hold (hold music, patience draining twice as fast) while you take another, and swapped back. A Floor Lead
 // also gets a queue: a caller who rings while both hands are full waits for a free line.
 import { addMoney, bus, settings, state, type CallRecord, type Line, type ScamId } from './state';
-import { drawCaller } from './callers';
+import { customCallers, drawCaller, ensureCallers } from './callers';
 import type { Caller, CallCtx, GiveKind, Turn } from './brain/types';
 import { getBrain } from './brain';
 import { scriptedBrain } from './brain/scripted';
-import { line } from './brain/lines';
+import { line, plainLine } from './brain/lines';
+import { lang, t as tr } from '../i18n';
+import { familySafe, familySpoken } from './modes';
+import { warmHdVoice } from './voices-hd';
 import { makeValues, matches, spokenDigits } from './values';
 import { scamForKind } from './scams';
 import { sfx } from './sound';
@@ -35,7 +38,25 @@ export interface ActiveCall {
   opener?: string;     // a forced first line (the Moon's complaint, Inspector Vane's file)
   tag?: string;        // who forced it, for the listeners that care
   snapped?: boolean;   // the review already has a webcam still of your worst moment on this call
+  baiter?: boolean;    // a scambaiter: wastes your time and mails you a virus
+  baiterTurns?: number;
+  baitSent?: boolean;
 }
+
+const BAITER_CHANCE = 0.12;
+let baiterChance = BAITER_CHANCE;
+/** probes and tests: how often an ordinary caller is a scambaiter (0–1) */
+export function setBaiterChance(p: number): void { baiterChance = Math.max(0, Math.min(1, p)); }
+// what a scambaiter says instead of an answer, on the built-in brain (the live brain is told the same in its prompt)
+const STALLS = [
+  "Sorry, you're breaking up. Can you say all of that again, slower?",
+  'Hold on, I need my glasses. Keep talking. No, wait. Okay. Go.',
+  "Before anything: what is your supervisor's name? Spell it for me.",
+  "Wonderful, wonderful. And what did you say your name was? Once more?",
+  'One moment, the kettle is singing. Right. Where were we? Start from the beginning.',
+  'Yes, yes, I want it. But first, read me your company address. Slowly.',
+];
+const BAIT_LINE = "Oh! I've just emailed you a photo of it. Open it, it explains everything.";
 
 export interface Forced { caller: Caller; mood?: number; opener?: string; tag?: string }
 
@@ -64,8 +85,12 @@ export function forceNext(f: Forced): void { forced = f; if (dialerOn && !active
 
 function setTag(): void { (window as unknown as { __hpActiveTag?: string }).__hpActiveTag = active?.tag ?? ''; }
 
+let packWarned = false; // "the callers did not load" is said once per shift
+// opening a scambaiter's file marks the call they are on (the hang-up bonus is then lost)
+bus.on<{ from: string }>('baiter:opened', ({ from }) => { for (const a of [active, held]) if (a?.baiter && a.caller.name === from) a.record.baitOpened = true; for (const r of state.calls) if (r.baiter && r.name === from) r.baitOpened = true; });
 export function startDialer(): void {
   dialerOn = true;
+  packWarned = false;
   scheduleNext(2500 + Math.random() * 3000);
 }
 
@@ -96,7 +121,16 @@ function ring(): void {
   const caller = f ? f.caller : queued ?? drawCaller();
   if (!f) queued = null;
   if (!caller) {
-    // nobody to ring: the roster is people-only and no pack has been imported yet
+    // nobody to ring yet: on a first visit the default pack may still be on its way, or the line dropped it.
+    // Wait for it, and keep trying every ten seconds while the shift runs; warn once.
+    if (!customCallers().length) {
+      void ensureCallers().then((ok) => {
+        if (!dialerOn) return;
+        if (!ok && !packWarned) { packWarned = true; toast('The callers did not load. Trying again; check the connection.', 'danger', 7000); }
+        scheduleNext(ok ? 800 : 10_000);
+      });
+      return;
+    }
     stopDialer();
     toast('No callers to ring. Import a caller pack in the Character Creator.', 'danger', 6000);
     return;
@@ -116,8 +150,15 @@ function ring(): void {
     callerId: caller.id, name: caller.name, archetype: caller.archetype, startedAt: Date.now(), trustEnd: ctx.mood, trustMin: ctx.mood,
     payouts: [], lines: ctx.lines, hungUpBy: null, suspicionMax: 0,
   };
-  active = { caller, ctx, record, status: 'ringing', busy: false, paid: new Set(), patienceUntil: 0, lastInput: Date.now(), opener: f?.opener, tag: f?.tag };
+  // a scambaiter (from day 2, about one ordinary caller in eight): eager, warm too fast, never hands anything over,
+  // stalls, and on the second reply emails a "photo" that is a virus. Seeded in a shared shift so everyone gets the same.
+  const baitRoll = state.mode === 'run' ? Math.random() : ((Math.imul(state.seed ^ (state.day * 7919) ^ (state.calls.length * 104729), 2654435761) >>> 0) / 4294967296);
+  const baiter = !f && state.day >= 2 && !caller.vip && caller.archetype !== 'inspector' && baitRoll < baiterChance;
+  if (baiter) { ctx.baiter = true; record.baiter = true; ctx.mood = Math.min(92, ctx.mood + 15); record.trustEnd = record.trustMin = ctx.mood; }
+  active = { caller, ctx, record, status: 'ringing', busy: false, paid: new Set(), patienceUntil: 0, lastInput: Date.now(), opener: f?.opener, tag: f?.tag, baiter };
   setTag();
+  // the HD voice's file is fetched while the phone rings, so the caller's first words are not held up by it
+  if (settings.voiceOut && settings.voices === 'hd' && lang() === 'en') warmHdVoice(voiceFor(caller, ctx.mood), caller.id);
   sfx.ring();
   ringTimer = setInterval(() => sfx.ring(), 2400);
   bus.emit('call:ring', caller);
@@ -148,7 +189,7 @@ export function answerCall(): void {
   if (p.secondLine) scheduleNext(25_000 + Math.random() * 25_000);
   const a = active;
   if (a.opener) deliver({ say: a.opener, moodDelta: 0, mood: 'calm', intent: 'open' });
-  else void getBrain().open(a.ctx).then((t) => { if (active === a) deliver(t); });
+  else void getBrain().open(a.ctx).then((t) => { if (active === a) { a.lastInput = Date.now(); deliver(t); } });
 }
 
 export function declineCall(): void {
@@ -234,7 +275,24 @@ function push(who: Line['who'], text: string, delta?: number): Line {
 function deliver(turn: Turn): void {
   if (!active || active.status !== 'live') return;
   const a = active;
-  const text = turn.say;
+  // a scambaiter never hands anything over and stays suspiciously warm; on the built-in brain every other reply is a
+  // stall; the second reply mails the "photo"
+  if (a.baiter && a.ctx.lines.some((l) => l.who === 'you')) {
+    a.baiterTurns = (a.baiterTurns ?? 0) + 1;
+    // safety net: whatever a brain handed over is taken back, and the line that would have said it becomes a stall
+    const gave = turn.gives;
+    if (gave) delete a.ctx.given[gave.kind];
+    turn = { ...turn, gives: undefined, hangUp: false, moodDelta: Math.max(2, turn.moodDelta ?? 0), suspicionDelta: 0, challenge: undefined };
+    if (gave || (getBrain().name !== 'live' && a.baiterTurns % 2 === 1)) turn.say = tr(STALLS[(a.baiterTurns + a.caller.id.length) % STALLS.length]);
+    if (!a.baitSent && a.baiterTurns >= 2) {
+      a.baitSent = true;
+      turn.say = `${turn.say} ${tr(BAIT_LINE)}`;
+      const who = a.caller.name;
+      setTimeout(() => bus.emit('baiter:mail', { from: who }), 1400);
+    }
+  }
+  // family mode: a swear that slipped past the brain is shown masked and left out of the voice
+  const text = familySafe(turn.say);
   push('caller', text);
   if (turn.moodDelta) {
     a.ctx.mood = Math.max(0, Math.min(100, a.ctx.mood + turn.moodDelta));
@@ -261,8 +319,8 @@ function deliver(turn: Turn): void {
     bus.emit('call:gives', turn.gives);
   }
   // the voice reads codes slowly
-  let spoken = text;
-  if (turn.gives) spoken = text.split(turn.gives.value).join(spokenDigits(turn.gives.value));
+  let spoken = familySpoken(text);
+  if (turn.gives) spoken = spoken.split(turn.gives.value).join(spokenDigits(turn.gives.value));
   const estimate = Math.min(7000, Math.max(1200, spoken.length * 55));
   bus.emit('call:speaking', { ms: estimate });
   speak(spoken, voiceFor(a.caller, a.ctx.mood), a.caller.id);
@@ -284,7 +342,7 @@ export async function sendLine(text: string): Promise<void> {
   a.busy = true;
   a.lastInput = Date.now();
   const before = a.ctx.mood;
-  const mine = push('you', t);
+  const mine = push('you', familySafe(t));
   bus.emit('call:thinking', true);
   let turn: Turn;
   try {
@@ -314,7 +372,8 @@ function patienceTick(): void {
   }
   if (!active || active.status !== 'live') { if (!held) clearInterval(tickTimer); return; }
   const a = active;
-  if (now - a.lastInput > 28_000 && !a.busy) {
+  // "still there?" only once the caller has said something: a slow opener is not the player's silence
+  if (now - a.lastInput > 28_000 && !a.busy && a.ctx.lines.some((l) => l.who === 'caller')) {
     a.lastInput = now;
     a.patienceUntil -= 15_000;
     deliver({ say: own(a, 'idle'), moodDelta: -2, mood: 'calm', intent: 'idle' });
@@ -327,6 +386,8 @@ function patienceTick(): void {
 
 /** a stock line in this caller's voice: their own table first, else the archetype's, coloured by how they talk */
 function own(a: ActiveCall, r: 'idle' | 'bye_polite' | 'happy' | 'withdraw'): string {
+  // in Albanian or Italian the stock line is the plain one, translated, so the call keeps one language
+  if (lang() !== 'en') return tr(plainLine(r)).replace(/\{name\}/g, a.caller.name).replace(/\{you\}/g, a.ctx.claimedName ?? a.ctx.playerName);
   const mine = a.caller.lines?.[r];
   if (mine && mine.length) return mine[Math.floor(Math.random() * mine.length)].replace(/\{name\}/g, a.caller.name).replace(/\{you\}/g, a.ctx.claimedName ?? a.ctx.playerName);
   return stylize(a.caller, line(a.caller.archetype, r).replace(/\{name\}/g, a.caller.name).replace(/\{you\}/g, a.ctx.claimedName ?? a.ctx.playerName));
@@ -343,6 +404,13 @@ function finish(a: ActiveCall, by: NonNullable<CallRecord['hungUpBy']>): void {
   a.record.hungUpBy = by;
   a.record.trustEnd = a.ctx.mood;
   sfx.hangup();
+  // hanging up on a scambaiter before opening their file is the right call: a small bonus, a target, a badge
+  if (a.baiter && by === 'you' && !a.record.baitOpened && a.baitSent) {
+    state.personal += 60;
+    bus.emit('money');
+    toast(`${a.caller.name} was a scambaiter. You hung up in time: +$60.`, 'money', 5000);
+    bus.emit('baiter:spotted', a.caller);   // the badge (hall.ts) and the daily target (objectives.ts) listen
+  }
   const earned = a.record.payouts.reduce((s, p) => s + p.amount, 0);
   const nextIn = by === 'shift' ? 0 : held || queued ? 1500 : 5000 + Math.random() * 5000;
   bus.emit(wasHeld ? 'call:held-ended' : 'call:ended', { by, record: a.record, nextIn, earned, duration: a.record.endedAt - a.record.startedAt, mood: a.ctx.mood, caller: a.caller, held: wasHeld });

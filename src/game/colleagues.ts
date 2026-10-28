@@ -10,6 +10,7 @@ import { callActive } from './calls';
 import { coop } from '../net/coop';
 import { SCAMS } from './scams';
 import type { Caller } from './brain/types';
+import { familySafe, familySpoken } from './modes';
 
 export interface ColleagueProfile {
   name: string;
@@ -84,9 +85,11 @@ function asCaller(p: ColleagueProfile): Caller {
 /** a colleague says something: a toast with their name, and their voice when nobody is on the line */
 export function sayAs(name: string, text: string, opts: { voice?: boolean; spoken?: string } = {}): void {
   const p = profileFor(name);
-  toast(`${name}: ${text}`, 'info', 3800);
+  // a colleague from the Character Creator says what its maker wrote: family mode masks it like a caller line
+  const shown = familySafe(text);
+  toast(`${familySafe(name)}: ${shown}`, 'info', 3800);
   if (!p || !settings.voiceOut || opts.voice === false || callActive()) return;
-  speak(opts.spoken ?? text, voiceFor(asCaller(p)), 'colleague-' + name);
+  speak(familySpoken(opts.spoken ? familySafe(opts.spoken) : shown), voiceFor(asCaller(p)), 'colleague-' + name);
 }
 
 /** what they say when they close one (day.ts calls this from the colleague tick) */

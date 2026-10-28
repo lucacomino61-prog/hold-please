@@ -9,6 +9,7 @@ import { toast } from '../ui/toast';
 import { abortShift, beginDay, endShift, hideBreak, startRun, startShift } from '../game/day';
 import { dismissSheet } from '../ui/report';
 import { scamById } from '../game/scams';
+import { familySafe } from '../game/modes';
 
 export interface RankRow { id: string; name: string; earned: number; today: number; me: boolean; here: boolean }
 
@@ -115,7 +116,12 @@ function onEvent(ev: RoomEvent): void {
       // a friend finished a shared target, or the host's event reaches the whole floor
       if (ev.sub === 'target') toast(`${ev.name} finished a target: ${ev.text}`, 'money', 3600);
       else if (ev.sub === 'event' && ev.text && ev.id !== room.state?.you) bus.emit('room:event', ev.text);
-      else if (ev.sub === 'chat' && ev.text) { bus.emit('room:chat', { id: ev.id, name: ev.name, text: ev.text, me: ev.id === room.state?.you }); if (ev.id !== room.state?.you && !document.querySelector('.pigeon')) toast(`${ev.name}: ${ev.text}`, 'info', 4000); }
+      else if (ev.sub === 'chat' && ev.text) {
+        // family mode masks a friend's swearing here, once, for the Pigeon window and the toast alike
+        const name = familySafe(ev.name ?? ''), text = familySafe(ev.text);
+        bus.emit('room:chat', { id: ev.id, name, text, me: ev.id === room.state?.you });
+        if (ev.id !== room.state?.you && !document.querySelector('.pigeon')) toast(`${name}: ${text}`, 'info', 4000);
+      }
       break;
   }
 }

@@ -96,6 +96,10 @@ export const sfx = {
     holdTimer = setInterval(play, 420);
   },
   type(): void { tone(1800 + Math.random() * 400, 0.015, 'square', 0.03); },
+  /** the lift: a soft tick per floor, a low hum while it climbs, the two-note chime at the door */
+  liftTick(): void { tone(540, 0.03, 'sine', 0.04); },
+  liftHum(ms: number): void { tone(98, ms / 1000, 'sine', 0.035); },
+  ding(): void { tone(1319, 0.6, 'sine', 0.14); tone(1047, 0.9, 'sine', 0.12, 0.28); },
   slap(): void { tone(180, 0.08, 'square', 0.25, 0, -100); tone(90, 0.15, 'sawtooth', 0.2, 0.02); },
   throwIt(): void { tone(500, 0.12, 'sine', 0.08, 0, 300); },
   clink(): void { tone(2200, 0.06, 'triangle', 0.12); tone(1800, 0.1, 'triangle', 0.08, 0.05); },

@@ -14,8 +14,45 @@ import { objectiveSummary, objectives } from './objectives';
 import { caseOver, caseSlides } from './case';
 import { todayMutator } from './mutators';
 import { setReviewDoom } from '../world/office';
+import { writeKrullLines } from './review-ai';
+import { getAvatar } from './avatar';
 
-interface Slide { title: string; body: string; krull: string; replay?: { callerId: string; you: string; reply: string } }
+interface Slide { title: string; body: string; krull: string; replay?: { callerId: string; you: string; reply: string; before?: string } }
+
+// ---- the AI roast: asked for when the shift ends, used if it is back by the time the review opens ----
+let roast: Promise<string[] | null> | null = null;
+/** what happened today, in plain lines, for the brain that writes Mr. Krull's review */
+function dayFacts(pass: boolean): string {
+  const calls = state.calls;
+  const total = calls.reduce((n, c) => n + c.payouts.reduce((a, p) => a + p.amount, 0), 0);
+  const lines: string[] = [
+    `Agent: ${settings.playerName || 'Agent'}. Day ${state.day}. Quota ${fmt(state.quota)}, team total ${fmt(state.team)}, this agent's sales ${fmt(total)}. Verdict: ${pass ? 'kept' : 'FIRED'}. Strikes ${state.strikes} of 3.`,
+  ];
+  const targets = objectives();
+  if (targets.length) lines.push(`Targets: ${targets.map((o) => `${o.def.text} (${o.done ? 'done' : 'missed'})`).join('; ')}.`);
+  if (state.casinoToday) lines.push(`Casino: ${state.casinoToday > 0 ? 'won' : 'lost'} ${fmt(Math.abs(state.casinoToday))} during the shift.`);
+  lines.push(`Calls (${calls.length}):`);
+  let budget = 2600;
+  for (const c of calls.slice(-8)) {
+    const sold = c.payouts.map((p) => `${scamById.get(p.scam)?.name ?? p.scam} for ${fmt(p.amount)}`).join(', ') || 'nothing';
+    const said = c.lines.filter((l) => l.text.trim()).slice(-6).map((l) => `${l.who === 'you' ? 'AGENT' : 'CALLER'}: "${l.text.slice(0, 140)}"`).join(' / ');
+    const entry = `- ${c.name}: sold ${sold}; ${c.hungUpBy === 'caller' ? 'the caller hung up' : c.hungUpBy === 'you' ? 'the agent hung up' : 'ended at the bell'}; mood at the end ${Math.round(c.trustEnd)}. ${said}`;
+    if (entry.length > budget) break;
+    budget -= entry.length;
+    lines.push(entry);
+  }
+  return lines.join('\n');
+}
+/** the end of the shift: start writing tonight's review while everyone walks to the room */
+export function startReviewRoast(): void {
+  const { slides, pass } = buildSlides();
+  // what each slide shows, as plain text (its numbers, names and quotes), so every line is about its own slide
+  const plain = (html: string): string => html
+    .replace(/<div class="tape"[\s\S]*?<div class="tape__sub"[^>]*><\/div><\/div><\/div>/, '')   // the tape's screen furniture (REC, CAM, NO WEBCAM)
+    .replace(/<button[\s\S]*?<\/button>/g, '')
+    .replace(/<[^>]+>/g, ' ').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim().slice(0, 420);
+  roast = writeKrullLines(slides.map((s) => ({ title: s.title, shows: plain(s.body) })), dayFacts(pass));
+}
 
 function esc(s: string): string { return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!)); }
 
@@ -49,22 +86,25 @@ function buildSlides(): { slides: Slide[]; pass: boolean } {
       t('{s} SALES. MY NEPHEW CLOSES MORE AND HE IS A GOOSE.', { s: sales.length }),
   });
 
-  let worst: { text: string; delta: number; reply: string; name: string; callerId: string } | null = null;
+  let worst: { text: string; delta: number; reply: string; before: string; name: string; callerId: string } | null = null;
   for (const c of calls) {
     for (let i = 0; i < c.lines.length; i++) {
       const l = c.lines[i];
       if (l.who !== 'you' || l.delta === undefined) continue;
-      if (!worst || l.delta < worst.delta) worst = { text: l.text, delta: l.delta, reply: c.lines[i + 1]?.text ?? '', name: c.name, callerId: c.callerId };
+      const prev = c.lines.slice(0, i).reverse().find((x) => x.who !== 'you');
+      if (!worst || l.delta < worst.delta) worst = { text: l.text, delta: l.delta, reply: c.lines[i + 1]?.text ?? '', before: prev?.text ?? '', name: c.name, callerId: c.callerId };
     }
   }
   if (worst && worst.delta <= -8) {
-    // the webcam still the game took at that exact line (calls.ts), like the original's review
+    // the webcam still the game took at that exact line (calls.ts), like the original's review, on a tape with the
+    // time stamp; Play runs the three lines around it with their voices and subtitles
     const still = clips.find((c) => c.auto && c.line === worst!.text) ?? clips.find((c) => c.auto);
+    const stamp = new Date(Date.now() - 1000 * 60 * (3 + (state.day % 7))).toTimeString().slice(0, 8);
     slides.push({
       title: t('Worst moment of the day'),
-      body: `<div class="worst">${still ? `<img class="worst__still" src="${still.dataUrl}" alt="Your face at that moment" width="200" height="150" />` : ''}<div class="worst__text"><div class="quote">“${esc(worst.text)}”</div><div>${t('— you, to {name}, mood {d}', { name: `<b>${esc(worst.name)}</b>`, d: worst.delta })}</div>` + (worst.reply ? `<div class="quote">“${esc(worst.reply)}”</div>` : '') + `<div><button type="button" class="btn btn--danger" data-replay>${t('▶ Play the tape')}</button></div></div></div>`,
+      body: `<div class="worst"><div class="tape" data-tape><div class="tape__screen">${still ? `<img class="tape__still" src="${still.dataUrl}" alt="Your face at that moment" width="320" height="240" />` : `<div class="tape__nosignal">${t('NO WEBCAM')}</div>`}<span class="tape__rec">● REC ${stamp}</span><span class="tape__cam">CAM 07 · ${esc(worst.name).toUpperCase()}</span><div class="tape__sub" aria-live="polite"></div></div></div><div class="worst__text"><div class="quote">“${esc(worst.text)}”</div><div>${t('— you, to {name}, mood {d}', { name: `<b>${esc(worst.name)}</b>`, d: worst.delta })}</div>` + (worst.reply ? `<div class="quote">“${esc(worst.reply)}”</div>` : '') + `<div><button type="button" class="btn btn--danger" data-replay>${t('▶ Play the tape')}</button></div></div></div>`,
       krull: still ? t('YOU SAID THIS. OUT LOUD. AND THAT IS YOUR FACE WHILE YOU SAID IT. I HAVE PRINTED IT.') : t('YOU SAID THIS. OUT LOUD. TO A CUSTOMER. I HAVE IT ON TAPE. I HAVE PLAYED IT TO MY MOTHER.'),
-      replay: { callerId: worst.callerId, you: worst.text, reply: worst.reply },
+      replay: { callerId: worst.callerId, you: worst.text, reply: worst.reply, before: worst.before },
     });
   } else {
     slides.push({ title: t('Worst moment of the day'), body: `<div class="big">${t('NONE')}</div><div>${t('No recorded disasters.')}</div>`, krull: t('NO DISASTERS. SUSPICIOUS. I WILL FIND ONE TOMORROW.') });
@@ -76,7 +116,7 @@ function buildSlides(): { slides: Slide[]; pass: boolean } {
     const sum = objectiveSummary();
     slides.push({
       title: t('Daily targets'),
-      body: `<ul class="targets targets--review">${targets.map((o) => `<li class="target ${o.done ? 'target--done' : 'target--missed'}"><span class="target__tick" aria-hidden="true">${o.done ? '✓' : '✗'}</span><div class="target__body"><b>${esc(o.def.text)}</b></div><span class="target__reward tabular">${o.done ? '+' + fmt(o.def.reward) : o.def.target > 1 ? `${o.progress} of ${o.def.target}` : 'missed'}</span></li>`).join('')}</ul><div>${sum.done} of ${sum.total} done — ${fmt(sum.earned)} in bonuses, yours to keep.</div>`,
+      body: `<ul class="targets targets--review">${targets.map((o) => `<li class="target ${o.done ? 'target--done' : 'target--missed'}"><span class="target__tick" aria-hidden="true">${o.done ? '✓' : '✗'}</span><div class="target__body"><b>${esc(t(o.def.text))}</b></div><span class="target__reward tabular">${o.done ? '+' + fmt(o.def.reward) : o.def.target > 1 ? t('{a} of {b}', { a: o.progress, b: o.def.target }) : t('missed')}</span></li>`).join('')}</ul><div>${t('{a} of {b} done — {x} in bonuses, yours to keep.', { a: sum.done, b: sum.total, x: fmt(sum.earned) })}</div>`,
       krull: sum.done === sum.total ? t('ALL OF THEM. SUSPICIOUS. NOBODY DOES ALL OF THEM.') : sum.done === 0 ? t('ZERO TARGETS. THEY WERE ON THE WHITEBOARD. THE WHITEBOARD IS ON THE WALL.') : t('{a} OF {b}. A NUMBER. NOT A GOOD NUMBER.', { a: sum.done, b: sum.total }),
     });
   }
@@ -139,6 +179,8 @@ function buildSlides(): { slides: Slide[]; pass: boolean } {
 
 export function showReview(): Promise<boolean> {
   const { slides, pass } = buildSlides();
+  const pendingRoast = roast;
+  roast = null;
   return new Promise((resolve) => {
     const el = document.createElement('section');
     el.className = 'review';
@@ -170,16 +212,48 @@ export function showReview(): Promise<boolean> {
         if (!rp) return;
         const c = callerById(rp.callerId);
         const b = body.querySelector<HTMLButtonElement>('[data-replay]')!;
+        const tape = body.querySelector<HTMLElement>('[data-tape]');
+        const sub = body.querySelector<HTMLElement>('.tape__sub');
         b.disabled = true; b.textContent = t('▶ Playing…');
-        // your line in a flat office voice, then the caller's reply in theirs
-        speak(rp.you, { pitch: 0.9, rate: 1.05 }, 'you', () => {
-          if (c && rp.reply) speak(rp.reply, voiceFor(c, 20), c.id, () => { b.disabled = false; b.textContent = t('▶ Play it again'); });
-          else { b.disabled = false; b.textContent = t('▶ Play it again'); }
-        });
+        tape?.classList.add('tape--playing');
+        // the tape: what the caller said, what you said, what they said back, each in its own voice with subtitles
+        const you = { pitch: 0.9, rate: 1.05, prefer: getAvatar().body === 'woman' ? 'female' as const : 'male' as const };
+        const seq = [
+          ...(rp.before && c ? [{ who: c.name, text: rp.before, voice: voiceFor(c, 50), id: c.id }] : []),
+          { who: settings.playerName || t('You'), text: rp.you, voice: you, id: 'you' },
+          ...(rp.reply && c ? [{ who: c.name, text: rp.reply, voice: voiceFor(c, 20), id: c.id }] : []),
+        ];
+        let k = 0;
+        const next = (): void => {
+          if (!body.isConnected || k >= seq.length) {
+            tape?.classList.remove('tape--playing');
+            if (sub) sub.textContent = '';
+            b.disabled = false; b.textContent = t('▶ Play it again');
+            return;
+          }
+          const ln = seq[k++];
+          if (sub) sub.innerHTML = `<b>${esc(ln.who)}:</b> ${esc(ln.text)}`;
+          // a line moves on when its voice ends, or after the time it takes to read it (voices off, or a voice that never ends)
+          let moved = false;
+          const go = (): void => { if (!moved) { moved = true; next(); } };
+          const readMs = Math.min(9000, 1400 + ln.text.length * 55);
+          if (settings.voiceOut) { speak(ln.text, ln.voice, ln.id, go); setTimeout(go, readMs + 6000); } else setTimeout(go, readMs);
+        };
+        next();
       });
     };
     btn.addEventListener('click', () => { if (i < slides.length - 1) { i++; show(); } else { stopSpeaking(); clearClips(); el.remove(); resolve(pass); } });
-    show();
-    btn.focus();
+    const start = (): void => { if (!el.isConnected) return; show(); btn.focus(); };
+    // tonight's lines from the live brain: wait at most 4 s once the room is up; lines that come later still reach
+    // the slides nobody has seen yet
+    if (pendingRoast) {
+      h.textContent = slides[0].title;
+      line.textContent = t('…reading tonight’s transcripts…');
+      btn.disabled = true;
+      let started = false;
+      const begin = (): void => { if (started) return; started = true; btn.disabled = false; start(); };
+      void pendingRoast.then((lines) => { if (lines) lines.forEach((l, k) => { if (l && slides[k] && (!started || k > i)) slides[k].krull = l; }); begin(); });
+      setTimeout(begin, 4000);
+    } else start();
   });
 }

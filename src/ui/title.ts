@@ -45,7 +45,7 @@ export function showTitle(): void {
         <div class="title__ready" aria-live="polite"></div>
       </div>
       <div class="title__foot">
-        <span>${t('Everything here is invented. Every caller is a cartoon. No real scheme is explained.')}</span>
+        <span>${t('The products are impossible and every call is made up. No real scheme is explained.')}</span>
         <span class="title__plays" aria-live="polite"></span>
         ${FEEDBACK_URL ? `<a class="title__feedback" href="${esc(FEEDBACK_URL)}" target="_blank" rel="noopener">${t('Feedback')}</a>` : ''}
         <label><input type="checkbox" data-motion /> ${t('Stop animations')}</label>

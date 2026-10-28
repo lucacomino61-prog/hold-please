@@ -316,13 +316,16 @@ export class Room extends DurableObject<Env> {
   }
 
   async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer) {
-    if (typeof raw !== 'string' || raw.length > 400) return;
+    // game messages are small (400 characters); voice signalling carries a WebRTC offer or answer of a few
+    // thousand, so 'rtc' alone may be longer (its own case below caps the relayed data at 20,000)
+    if (typeof raw !== 'string' || raw.length > 24_000) return;
     let msg: Msg;
     try {
       msg = JSON.parse(raw);
     } catch {
       return;
     }
+    if (raw.length > 400 && msg?.t !== 'rtc') return;
     const g = await this.load();
     if (!g) return ws.close(4004, 'gone');
     const me = this.byToken(g, this.tokenOf(ws));

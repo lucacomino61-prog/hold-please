@@ -9,7 +9,9 @@
 // A request may carry a "seed" (the game sends the caller's id): the chain then starts at a model chosen by that
 // seed, so every caller keeps one voice for the whole call and the calls spread over all the free models and keys.
 // Routes: GET /health · POST /v1/chat {provider: auto|cf|chat|anthropic, model?, seed?, system, messages, max_tokens?}
-//         → {text, provider, model, tried} · POST /v1/messages = the raw Anthropic passthrough kept for the older client.
+//         → {text, provider, model, tried} · POST /v1/messages = the raw Anthropic passthrough kept for the older client
+//         · POST /v1/stt {audio: base64 WAV/MP3/WebM, lang?: en|sq|it} → {text}: the player's voice through Whisper
+//           large-v3-turbo on Workers AI ($0.000513 an audio minute), for browsers without speech recognition.
 //   dev:    npm run brain          (brain/.dev.vars holds the secrets; the AI binding runs remotely, logged in)
 //   deploy: npm run brain:deploy   then  npx wrangler secret put <SECRET_NAME> -c brain/wrangler.jsonc  per key
 
@@ -193,13 +195,36 @@ export default {
     if (url.pathname === '/health') {
       const restingModels = [...resting.entries()].filter(([, t]) => t > Date.now()).map(([k]) => k);
       return json({
-        ok: true, key: !!env.ANTHROPIC_API_KEY, ai: !!env.AI, chat: list.some((p) => !!secretOf(env, p)),
+        ok: true, key: !!env.ANTHROPIC_API_KEY, ai: !!env.AI, chat: list.some((p) => !!secretOf(env, p)), stt: !!env.AI,
         models: { cf: cfs.preferred, cfMore: cfs.more, chat: list.filter((p) => !!secretOf(env, p)).flatMap((p) => p.models.map((m) => `${p.name}:${m}`)), anthropic: ANTHROPIC_MODELS },
         // names only, never values: which keyed providers are configured, whether their secret is set, and who is resting
         providers: list.map((p) => ({ name: p.name, models: p.models, more: p.more, key: !!secretOf(env, p), resting: isResting(p.name) })),
         count: { free: cfs.preferred.length + cfs.more.length + list.filter((p) => !!secretOf(env, p)).reduce((n, p) => n + p.models.length + p.more.length, 0), configured: cfs.preferred.length + cfs.more.length + list.reduce((n, p) => n + p.models.length + p.more.length, 0) },
         resting: restingModels,
       }, 200, cors);
+    }
+    // the player's voice → text, for browsers without their own speech recognition (Firefox, Safari)
+    if (req.method === 'POST' && url.pathname === '/v1/stt') {
+      const lim = limited(req.headers.get('cf-connecting-ip') || 'local');
+      if (lim) return json({ error: lim }, 429, cors);
+      if (!env.AI) return json({ error: 'no Workers AI binding' }, 503, cors);
+      let sb: { audio?: unknown; lang?: unknown };
+      try { sb = await req.json() as typeof sb; } catch { return json({ error: 'bad json' }, 400, cors); }
+      const audio = typeof sb.audio === 'string' ? sb.audio : '';
+      if (!audio) return json({ error: 'no audio' }, 400, cors);
+      if (audio.length > 1_600_000) return json({ error: 'too long' }, 413, cors); // about 36 s of 16 kHz speech
+      const language = ['en', 'sq', 'it'].includes(String(sb.lang)) ? String(sb.lang) : undefined;
+      try {
+        // Whisper now and then hangs for most of a minute: give up after 12 s so the player can simply try again
+        const r = await Promise.race([
+          env.AI.run('@cf/openai/whisper-large-v3-turbo', { audio, vad_filter: true, ...(language ? { language } : {}) }),
+          new Promise<never>((_, rej) => setTimeout(() => rej(fail('speech recognition timed out', 504)), 12_000)),
+        ]) as { text?: unknown };
+        return json({ text: String(r?.text ?? '').trim() }, 200, cors);
+      } catch (e) {
+        const err = e as { message?: string; status?: number };
+        return json({ error: String(err?.message ?? e).slice(0, 160) }, err?.status === 504 ? 504 : 502, cors);
+      }
     }
     if (req.method !== 'POST' || (url.pathname !== '/v1/chat' && url.pathname !== '/v1/messages')) return new Response('Not found', { status: 404, headers: cors });
 

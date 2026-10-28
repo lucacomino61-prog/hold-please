@@ -4,6 +4,7 @@ import { CODE_RE, ServerError, room, serverUrl, type PublicRoom, type RoomState 
 import { coop } from '../net/coop';
 import { hideTitle } from './title';
 import { sfx } from '../game/sound';
+import { familySafe, shownCode } from '../game/modes';
 
 const SHIRTS = ['#2bb3a3', '#e9c84a', '#d94b4b', '#4a78d9', '#8e5ad6', '#f08a24', '#3fa34d', '#e26fb0'];
 
@@ -124,10 +125,10 @@ function renderStart(): void {
       <label>Your name on the floor<input type="text" name="name" maxlength="24" value="${esc(settings.playerName)}" autocomplete="nickname" required /></label>
       <div class="lobby__shirts"><span class="lobby__shirts-label">Your shirt</span><div class="shirts" role="radiogroup" aria-label="Shirt colour">${SHIRTS.map((c) => `<label class="shirt" style="--shirt:${c}"><input type="radio" name="shirt" value="${c}" ${c === settings.shirt ? 'checked' : ''} aria-label="Shirt ${c}" /><span></span></label>`).join('')}</div></div>
     </div>
-    ${saved ? `<button class="btn btn--amber" type="button" data-rejoin ${busy ? 'disabled' : ''}>Rejoin room ${saved.code}</button>` : ''}
+    ${saved ? `<button class="btn btn--amber" type="button" data-rejoin ${busy ? 'disabled' : ''}>Rejoin room ${shownCode(saved.code)}</button>` : ''}
     <div class="lobby__ways">
       <div class="lobby__way"><h3>Host a room</h3><p class="fine">You get a four-letter code to send around. Shift length ${settings.shiftMinutes} min (change it in Settings).</p><label class="check"><input type="checkbox" name="public" ${settings.roomPublic ? 'checked' : ''} /> List it publicly, so anyone can join</label><button class="btn btn--amber" type="button" data-host ${busy ? 'disabled' : ''}>Host a room</button></div>
-      <div class="lobby__way"><h3>Join a friend</h3><label>Room code<input type="text" name="code" maxlength="4" placeholder="K7QF" autocapitalize="characters" autocomplete="off" spellcheck="false" /></label><button class="btn" type="button" data-join ${busy ? 'disabled' : ''}>Join</button></div>
+      <div class="lobby__way"><h3>Join a friend</h3><label>Room code<input type="text" name="code" maxlength="4" placeholder="K7QF" autocapitalize="characters" autocomplete="off" spellcheck="false" ${settings.streamer ? 'class="is-secret"' : ''} /></label><button class="btn" type="button" data-join ${busy ? 'disabled' : ''}>Join</button></div>
     </div>
     <div class="lobby__public"><h3>Public rooms</h3><ul class="lobby__players"><li class="fine">Looking…</li></ul></div>
     <details class="lobby__server"><summary>Room server</summary><label>Address<input type="text" name="server" value="${esc(settings.roomServer)}" placeholder="${esc(dflt || 'https://…')}" spellcheck="false" /></label><p class="fine">${dflt ? `Empty means ${esc(dflt)}.` : 'This build has no server set: paste the address of one.'} Locally: <code>npm run server</code>.</p></details>
@@ -162,16 +163,18 @@ function renderRoom(s: RoomState): void {
   const hostName = s.players.find((p) => p.id === s.host)?.name ?? 'the host';
   wrap!.innerHTML = `<div class="panel panel--lobby" role="dialog" aria-labelledby="lobby-code-label">
     <div class="sheet__eyebrow" id="lobby-code-label">Room code</div>
-    <div class="lobby__code" aria-label="Room code ${s.code.split('').join(' ')}">${s.code}</div>
-    <div class="cluster" style="--cluster-space:.6rem"><button class="btn" type="button" data-copy>Copy the code</button><span class="fine">Friends: Play with friends → Join → this code.</span></div>
+    <div class="lobby__code" aria-label="${settings.streamer ? 'Room code hidden (streamer mode)' : `Room code ${s.code.split('').join(' ')}`}">${shownCode(s.code)}</div>
+    <div class="cluster" style="--cluster-space:.6rem"><button class="btn" type="button" data-copy>Copy the code</button><span class="fine">Friends: Play with friends → Join → this code.${settings.streamer ? ' Streamer mode hides it on screen; the copy is the real one.' : ''}</span></div>
     <h3>On the floor (${s.players.length} / 8)</h3>
-    <ul class="lobby__players">${s.players.map((p) => `<li><span class="lobby__dot" style="--shirt:${p.shirt}"></span><b>${esc(p.name)}</b>${p.id === s.host ? '<span class="lobby__tag">host</span>' : ''}${p.id === s.you ? '<span class="lobby__tag lobby__tag--you">you</span>' : ''}${p.here ? '' : '<span class="fine">away</span>'}</li>`).join('')}</ul>
+    <ul class="lobby__players">${s.players.map((p) => `<li><span class="lobby__dot" style="--shirt:${p.shirt}"></span><b>${esc(familySafe(p.name))}</b>${p.id === s.host ? '<span class="lobby__tag">host</span>' : ''}${p.id === s.you ? '<span class="lobby__tag lobby__tag--you">you</span>' : ''}${p.here ? '' : '<span class="fine">away</span>'}</li>`).join('')}</ul>
     <p class="fine">Shift ${s.shiftMinutes} min · the first quota is ${fmt(s.quota)} · ${host ? 'you clock everyone in from the break room.' : `${esc(hostName)} starts the day and clocks everyone in.`}</p>
     <p class="lobby__note" aria-live="polite">${esc(note)}</p>
     <div class="panel__actions"><button class="btn btn--ghost" type="button" data-leave>Leave</button>${host ? '<button class="btn btn--amber" type="button" data-start>Start the day</button>' : `<button class="btn btn--amber" type="button" disabled>Waiting for ${esc(hostName)} to start…</button>`}</div>
   </div>`;
   wrap!.querySelector('[data-copy]')!.addEventListener('click', async () => {
-    try { await navigator.clipboard.writeText(s.code); note = `Code ${s.code} copied.`; } catch { note = `The code is ${s.code}.`; }
+    // streamer mode never prints the code, not even when the clipboard refuses
+    try { await navigator.clipboard.writeText(s.code); note = settings.streamer ? 'Code copied.' : `Code ${s.code} copied.`; }
+    catch { note = settings.streamer ? 'The clipboard refused. Streamer mode hides the code: turn it off in Settings to read it.' : `The code is ${s.code}.`; }
     render();
   });
   wrap!.querySelector('[data-leave]')!.addEventListener('click', back);

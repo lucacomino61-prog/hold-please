@@ -40,7 +40,8 @@ export function scheduleEvents(): void {
   const kinds: EventKind[] = ['virus', 'raid', 'airstrike', 'powercut', 'krull', 'raid', 'krull', 'fire', 'mooncall', 'poach'];
   // the finale: the Bureau raids the floor again and again
   if (state.day >= FINALE_DAY) kinds.push('raid', 'raid', 'raid', 'krull');
-  if (state.day >= 3) kinds.push('fire', 'bomb', 'tsunami', 'ufo', 'poop', 'fireworks', 'lightning', 'pandemic');
+  // family mode keeps the plumbing disaster off the floor
+  if (state.day >= 3) kinds.push('fire', 'bomb', 'tsunami', 'ufo', ...(settings.family ? [] : ['poop' as const]), 'fireworks', 'lightning', 'pandemic');
   if (state.day >= 4) kinds.push('nuke', 'hurricane', 'bombthreat', 'radioactive');
   for (let i = 0; i < n; i++) {
     const at = 45_000 + Math.random() * Math.max(30_000, state.shiftTotal - 110_000);

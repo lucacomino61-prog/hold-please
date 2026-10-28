@@ -7,6 +7,7 @@ import { icon } from '../os/icons';
 import { coop, type RankRow } from '../net/coop';
 import { badgeChips } from '../game/hall';
 import { currentRank, type Rank } from '../game/ranks';
+import { shownCode } from '../game/modes';
 
 function esc(s: string): string { return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!)); }
 
@@ -77,7 +78,7 @@ export function showFired(extra: { badges: string[] } = { badges: [] }): Promise
       <div class="sheet__head"><div>
         <div class="sheet__eyebrow">${t('Sunrise Customer Care termination report')}</div>
         <h2 class="sheet__title">${t("Everyone's fired")}</h2>
-        <p>${co ? `Everyone in room ${esc(coop.code())}, ranked by what they brought in.` : t('Your complete employment record, ranked against the rest of the call floor.')}</p>
+        <p>${co ? `Everyone in room ${esc(shownCode(coop.code()))}, ranked by what they brought in.` : t('Your complete employment record, ranked against the rest of the call floor.')}</p>
       </div><div class="sheet__side tabular"><div><b>${days} ${days > 1 ? t('days') : t('day')}</b><span>${t('days worked')}</span></div><div><b class="is-money">${fmt(state.team)}</b><span>${t('team haul')}</span></div><div><b>${fmt(state.quota)}</b><span>${t('final quota')}</span></div></div></div>
       <div class="rank-line">${t('Final rank:')} <b>${esc(currentRank().name)}</b>${extra.badges.length ? ` · ${extra.badges.length} badge${extra.badges.length > 1 ? 's' : ''} earned this run` : ''}</div>
       ${extra.badges.length ? `<div class="badges-row">${badgeChips(extra.badges)}</div>` : ''}

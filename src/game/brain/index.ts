@@ -3,7 +3,7 @@ import { liveBrain, PROXY_URL, proxyUrl, providerLabel } from './claude';
 import { scriptedBrain } from './scripted';
 import type { CallerBrain } from './types';
 
-export { PROXY_URL, checkProxy, proxyState, proxyInfo, proxyUrl, proxyBase, liveBrainConfigured, providerFor, providerLabel } from './claude';
+export { PROXY_URL, checkProxy, proxyState, proxyInfo, proxyUrl, proxyBase, liveBrainConfigured, providerFor, providerLabel, modelLabel } from './claude';
 
 // A language model plays the callers when the player chose one, or by default when a brain proxy is
 // configured and the player never chose otherwise (the free Workers AI brain first, then Claude, then any

@@ -89,6 +89,19 @@ async function route(req: Request, url: URL, env: Env): Promise<Response> {
     }
     return json({ scores: await lobby.scores(sc[1]) });
   }
+  // saves that follow a player: one blob per sync code (no account: whoever has the code has the saves).
+  // POST {at, data} writes (the newest write wins), GET reads. data is the browser's gzip of its save keys, base64.
+  const sv = url.pathname.match(/^\/saves\/([A-HJ-NP-Z2-9]{12})$/);
+  if (sv) {
+    const lobby = env.LOBBY.get(env.LOBBY.idFromName('lobby'));
+    if (req.method === 'POST') {
+      const b = await body<{ at?: unknown; data?: unknown }>(req, 110_000);
+      if (!b || typeof b.data !== 'string' || typeof b.at !== 'number' || !b.data || b.data.length > 100_000) return json({ error: 'bad' }, 400);
+      return json(await lobby.putSave(sv[1], Math.round(b.at), b.data));
+    }
+    const s = await lobby.getSave(sv[1]);
+    return json(s ?? { error: 'missing' }, s ? 200 : 404);
+  }
   if (url.pathname === '/plays') {
     const lobby = env.LOBBY.get(env.LOBBY.idFromName('lobby'));
     return json({ plays: req.method === 'POST' ? await lobby.bump() : await lobby.plays() });

@@ -238,7 +238,8 @@ export const scriptedBrain: CallerBrain = {
       // that pushes ("act now", "trust me", a threat, a rush, a changed story): insisting never works
       const pushy = RX.pressure.test(text) || RX.trustMe.test(text) || RX.threaten.test(text) || RX.rush.test(text) || contradiction;
       const ready = ctx.pitched.has(ask.id) && ctx.turn >= 1 && !pushy;
-      if (ready && ctx.mood >= gate && susNow() < SUS_NO_GIVE) {
+      // a scambaiter never hands anything over (calls.ts turns the moment into a stall)
+      if (ready && ctx.mood >= gate && susNow() < SUS_NO_GIVE && !ctx.baiter) {
         const value = valueFor(ctx, ask.needs);
         ctx.given[ask.needs] = value;
         gives = { kind: ask.needs, value };

@@ -14,6 +14,7 @@
     "server:check": "npx wrangler types -c server/wrangler.jsonc server/worker-configuration.d.ts && tsc -p server/tsconfig.json"
   },
   "dependencies": {
+    "kokoro-js": "1.2.1",
     "three": "0.186.1"
   },
   "devDependencies": {

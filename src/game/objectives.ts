@@ -1,7 +1,7 @@
 // Daily targets: three small objectives a day next to the quota, each worth a personal bonus the moment it is done.
 // They are drawn from a pool by the day and the run's seed, shown on the break-room whiteboard, in the Targets window
 // on the desktop, and ticked off in Mr. Krull's review.
-import { bus, fmt, state, type ScamId } from './state';
+import { bus, fmt, settings, state, type ScamId } from './state';
 import { currentCall } from './calls';
 import { scamById } from './scams';
 import { toast } from '../ui/toast';
@@ -10,6 +10,7 @@ import { coop } from '../net/coop';
 import { room } from '../net/room';
 import type { Caller } from './brain/types';
 import type { CallRecord } from './state';
+import { t } from '../i18n';
 
 /** in co-op the room's code seeds the day's three, so the whole floor shares them */
 function daySeed(): number {
@@ -61,6 +62,7 @@ export const DEFS: ObjectiveDef[] = [
   { id: 'bomb', text: 'Defuse a computer bomb', reward: 150, target: 1, minDay: 3, event: 'event:outcome', count: (d) => { const e = d as { kind: string; ok: boolean }; return e.kind === 'bomb' && e.ok ? 1 : 0; }, family: 'event' },
   { id: 'snapshot', text: 'Take a snapshot in the Camera', reward: 40, target: 1, event: 'clip', count: (d) => ((d as { kind: string }).kind === 'snapshot' ? 1 : 0) },
   { id: 'floor', text: 'Take a call at a different desk', reward: 60, target: 1, event: 'floor:sat', count: (d) => ((d as { moved: boolean }).moved ? 1 : 0) },
+  { id: 'baiter', text: 'Hang up on a scambaiter before opening their file', reward: 90, target: 1, minDay: 2, event: 'baiter:spotted', count: () => 1 },
   { id: 'answer8', text: 'Answer eight calls', reward: 110, target: 8, minDay: 2, event: 'call:answered', count: () => 1 },
   { id: 'trusting2', text: 'Get two callers to TRUSTING', reward: 160, target: 2, minDay: 2, event: 'call:mood', count: (d) => { const m = (d as { mood: number }).mood; const c = call(); if (m < 80 || !c || onceByCall.has(c.record.startedAt)) return 0; onceByCall.add(c.record.startedAt); return 1; } },
   { id: 'hold', text: 'Put a caller on hold and come back to them', reward: 90, target: 1, event: 'call:swapped', count: () => 1 },
@@ -90,11 +92,14 @@ function rng(seed: number): () => number {
 }
 
 /** three for today, from the run's seed and the day: the same three until the day moves on (ids pin a set, for the probes) */
+const TOILET = new Set(['plumbing', 'gas']);
 export function planObjectives(ids?: string[]): Objective[] {
   const r = rng(daySeed());
-  const pool = DEFS.filter((d) => (d.minDay ?? 1) <= state.day && (!d.needs || state.owned.has(d.needs)));
+  // family mode: the toilet targets (the plumbing, the gas) are never set, not even when a room's host picked them
+  const clean = (d: ObjectiveDef) => !(settings.family && TOILET.has(d.id));
+  const pool = DEFS.filter((d) => (d.minDay ?? 1) <= state.day && (!d.needs || state.owned.has(d.needs)) && clean(d));
   const shuffled = pool.map((d) => ({ d, k: r() })).sort((a, b) => a.k - b.k).map((x) => x.d);
-  const picked: ObjectiveDef[] = ids ? ids.map((id) => DEFS.find((d) => d.id === id)).filter((d): d is ObjectiveDef => !!d) : [];
+  const picked: ObjectiveDef[] = ids ? ids.map((id) => DEFS.find((d) => d.id === id)).filter((d): d is ObjectiveDef => !!d && clean(d)) : [];
   const families = new Set<string>();
   for (const d of shuffled) {
     if (picked.length >= 3) break;
@@ -116,7 +121,7 @@ function complete(o: Objective): void {
   state.personal += o.def.reward;   // a personal bonus: it never moves the team total
   bus.emit('money');
   sfx.cash();
-  toast(`Target done: ${o.def.text} — +${fmt(o.def.reward)}`, 'money', 4800);
+  toast(t('Target done: {t} — +{r}', { t: t(o.def.text), r: fmt(o.def.reward) }), 'money', 4800);
   bus.emit('objective', o);
   if (coop.live) room.send({ t: 'note', sub: 'target', text: o.def.text });
 }

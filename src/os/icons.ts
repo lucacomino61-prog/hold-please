@@ -25,6 +25,8 @@ export const ICONS: Record<string, string> = {
   ghostdentist: wrap('<path d="M6 20V10a6 6 0 0 1 12 0v10l-2-2-2 2-2-2-2 2-2-2z"/><path d="M9 14h2v3H9zM13 14h2v3h-2z"/>'),
   timezone: wrap('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/><path d="M3 12h3M18 12h3"/>'),
   remote: wrap('<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="M9 10l2 2 4-4"/>'),
+  stars: wrap('<path d="M12 3l1.8 4.6 4.9.3-3.8 3.1 1.2 4.8L12 13.2 7.9 15.8l1.2-4.8L5.3 7.9l4.9-.3z"/><circle cx="5" cy="19" r="1"/><circle cx="19" cy="18" r="1.3"/><path d="M5 19l6-1 8 0"/>'),
+  courier: wrap('<path d="M3 8l9-4 9 4v8l-9 4-9-4z"/><path d="M3 8l9 4 9-4M12 12v8"/><circle cx="16.5" cy="10.5" r="1"/>'),
   radio: wrap('<rect x="3" y="9" width="18" height="11" rx="2"/><path d="M7 9l10-5"/><circle cx="8" cy="15" r="2"/><path d="M13 13h5M13 16h5"/>'),
   petwifi: wrap('<path d="M5 12a10 10 0 0 1 14 0M8 15a6 6 0 0 1 8 0"/><circle cx="12" cy="19" r="1.5" fill="currentColor"/><path d="M9 4l1 3M15 4l-1 3"/>'),
   runes: wrap('<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 12h2M11 12h2M15 12h2M3 10h18"/>'),

@@ -45,6 +45,7 @@ export function saveRun(badges: string[] = [], n = slot): void {
     carryStrike: state.carryStrike,
   };
   try { localStorage.setItem(keyOf(n), JSON.stringify(data)); } catch { /* private mode etc. */ }
+  bus.emit('save:written', n);   // save-sync.ts pushes a copy when this browser syncs
 }
 
 export function loadSave(n = slot): SaveData | null {
@@ -56,7 +57,7 @@ export function loadSave(n = slot): SaveData | null {
   } catch { return null; }
 }
 
-export function clearSave(n = slot): void { try { localStorage.removeItem(keyOf(n)); } catch { /* ignore */ } }
+export function clearSave(n = slot): void { try { localStorage.removeItem(keyOf(n)); } catch { /* ignore */ } bus.emit('save:written', n); }
 
 /** put a saved run back into the state (after resetRun) */
 export function applySave(d: SaveData): void {

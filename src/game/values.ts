@@ -1,5 +1,6 @@
 // The nonsense the callers "give": crater names, sun serial numbers, rune tickets. Nothing real.
 import type { GiveKind } from './brain/types';
+import { clueFor, SKY } from './sky';
 
 const d = (n: number) => Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join('');
 const L = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -12,7 +13,7 @@ const PETS = ['Biscuit', 'Admiral', 'Pudding', 'Noodle', 'Gizmo', 'Pepper', 'Sir
 const PLANS = ['Basic Bark', 'Purr Premium', 'Ultra Fetch', 'Goldfish Lite'];
 
 export function makeValues(): Record<GiveKind, string> {
-  return {
+  const v: Record<GiveKind, string> = {
     crater: pickOne(CRATERS),
     sunserial: `SUN-${d(4)}`,
     gravitypin: pickOne(PINS),
@@ -41,8 +42,18 @@ export function makeValues(): Record<GiveKind, string> {
     toothcount: String(1 + Math.floor(Math.random() * 10)),
     zonehours: `${pickOne(['+', '-'])}${1 + Math.floor(Math.random() * 11)} hours`,
     viewcode: `${d(3)}-${d(3)}`,
+    starclue: '',
+    crateword: pickOne(CRATE_WORDS),
   };
+  // the Star Registry: which star this caller owns (a hidden index the app reads) and how they describe it
+  const star = Math.floor(Math.random() * SKY.length);
+  v.starclue = clueFor(star);
+  starOf.set(v, star);
+  return v;
 }
+/** the star a call's values point at (Star Registry) */
+export const starOf = new WeakMap<object, number>();
+export const CRATE_WORDS = ['HERRING', 'ICEBERG', 'FLIPPER', 'TUXEDO', 'WADDLE', 'SARDINE', 'BLIZZARD', 'MACKEREL'] as const;
 
 export const SKIES = ['sunny', 'drizzle', 'fog', 'hail', 'double rainbow', 'aurora', 'bees', 'snow'] as const;
 export const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'] as const;

@@ -6,6 +6,10 @@ import * as mutatorsMod from './game/mutators';
 import { DEFS } from './game/objectives';
 import * as challengeMod from './game/challenge';
 import * as musicMod from './game/music';
+import * as hdMod from './game/voices-hd';
+import * as speechMod from './game/speech';
+import { starOf } from './game/values';
+import { SKY } from './game/sky';
 import { listSaves, setSlot } from './game/save';
 import { voice } from './net/voice';
 import { t } from './i18n';
@@ -38,8 +42,11 @@ import './game/hall';
 import { saveSettings, settings, state } from './game/state';
 import { startLoop } from './world/loop';
 import { showTitle } from './ui/title';
+import { pullOnOpen } from './game/save-sync';
 import { answerCall, currentCall, hangUp, sendLine } from './game/calls';
-import { endShift, startRun, startShift } from './game/day';
+import { beginDay, endShift, startRun, startShift } from './game/day';
+import * as floorsMod from './world/floors';
+import * as modesMod from './game/modes';
 import { triggerEvent } from './game/events';
 import { claim } from './game/calls';
 import { officeDebug, setRemotePlayers, setRemoteScreens } from './world/office';
@@ -54,11 +61,13 @@ import { callerById, customCallers } from './game/callers';
 import { clearSave, loadSave, saveRun } from './game/save';
 import { hall, unlock, unlocked } from './game/hall';
 import { currentRank, perks } from './game/ranks';
-import { forceNext, heldCall, holdCall, onHold, swapCall, transferCall } from './game/calls';
+import { forceNext, heldCall, holdCall, onHold, setBaiterChance, swapCall, transferCall } from './game/calls';
 import { watchPortraits, prewarm as prewarmToons } from './os/toon';
 import { bus as hpBus } from './game/state';
 // every photo portrait becomes a cartoon as soon as it is on the page; the pack's faces are drawn ahead of the first ring
 watchPortraits();
+// HD voices chosen earlier: start them in the background (the model comes from the browser's cache after the first time)
+if (settings.voices === 'hd') void hdMod.loadHd();
 const warmFaces = (): void => prewarmToons(customCallers().map((c) => c.portrait?.photo ?? '').filter(Boolean));
 warmFaces();
 hpBus.on('callers:synced', warmFaces);
@@ -67,7 +76,7 @@ import { addSlip, slips } from './game/case';
 
 // dev hooks for the browser probes (tools/ and the pane)
 if (import.meta.env.DEV) {
-  (window as unknown as { __hp: unknown }).__hp = { state, settings, answerCall, currentCall, hangUp, sendLine, startRun, startShift, endShift, triggerEvent, claim, setRemotePlayers, setRemoteScreens, standUp, openApp, setVipChance, bootSplash, objectives, planObjectives, styleFor, stylize, voiceFor, callerById, saveRun, loadSave, clearSave, hall, unlock, unlocked, currentRank, perks, onHold, holdCall, swapCall, heldCall, transferCall, forceNext, setMutator, todayMutator, addSlip, slips, office: officeDebug, listSaves, setSlot, voice, t, rival: rivalMod, krullOffice, mutators: mutatorsMod, objectiveCount: () => DEFS.length, challenge: challengeMod, music: musicMod, portrait: portraitMod };
+  (window as unknown as { __hp: unknown }).__hp = { state, settings, answerCall, currentCall, hangUp, sendLine, startRun, startShift, endShift, triggerEvent, claim, setRemotePlayers, setRemoteScreens, standUp, openApp, setVipChance, bootSplash, objectives, planObjectives, styleFor, stylize, voiceFor, callerById, saveRun, loadSave, clearSave, hall, unlock, unlocked, currentRank, perks, onHold, holdCall, swapCall, heldCall, transferCall, forceNext, setMutator, todayMutator, addSlip, slips, office: officeDebug, listSaves, setSlot, voice, t, rival: rivalMod, krullOffice, mutators: mutatorsMod, objectiveCount: () => DEFS.length, challenge: challengeMod, music: musicMod, portrait: portraitMod, hd: hdMod, speech: speechMod, setBaiterChance, sky: { starOf, SKY }, beginDay, floors: floorsMod, modes: modesMod };
 }
 
 document.documentElement.dataset.motion = settings.motion;
@@ -79,3 +88,5 @@ if (window.matchMedia('(prefers-reduced-motion: reduce)').matches && settings.mo
 
 startLoop();
 showTitle();
+// saves synced from another browser: the newest copy comes down, and the title lists its slots
+void pullOnOpen().then((applied) => { if (applied && state.phase === 'title') showTitle(); });

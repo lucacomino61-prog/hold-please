@@ -17,7 +17,7 @@ import { hangUp, setRingTimeout, startDialer, stopDialer } from './calls';
 import { bootSplash, mountOS, osElement, refreshDesktop } from '../os/desktop';
 import { closeAllWindows } from '../os/windows';
 import { clearEvents, scheduleEvents } from './events';
-import { showReview } from './review';
+import { showReview, startReviewRoast } from './review';
 import { showFired, showPromotion } from '../ui/report';
 import { showTitle } from '../ui/title';
 import { toast } from '../ui/toast';
@@ -28,7 +28,7 @@ import { enterOffice, leaveOffice, officeAvailable, setWhiteboardLines, walkToRe
 import { coop } from '../net/coop';
 import { showCharacterSetup } from '../ui/character';
 import { startFloorTutorial, startTutorial, stopTutorial } from '../ui/tutorial';
-import { checkProxy, getBrain, providerLabel } from './brain/index';
+import { checkProxy, getBrain, modelLabel, providerLabel } from './brain/index';
 import { armObjectives, disarmObjectives, objectives, planObjectives, resetObjectives } from './objectives';
 import { applyCustomColleagues, profileFor, saleLine, sayAs } from './colleagues';
 import { applySave, clearSave, loadSave, saveRun, setSlot } from './save';
@@ -38,6 +38,9 @@ import { currentRank, rankForDays } from './ranks';
 import { mutatorBonus, todayMutator } from './mutators';
 import { resetVane } from './case';
 import { clickerReset } from '../os/apps/clicker';
+import { floorTheme, promotedFrom } from '../world/floors';
+import { elevatorRide } from '../ui/elevator';
+import { shownCode } from './modes';
 
 let frameOff: (() => void) | null = null;
 let colleagueTimer: ReturnType<typeof setInterval> | undefined;
@@ -88,9 +91,24 @@ export function beginDay(): void {
     breakEl.setAttribute('aria-label', 'Break room');
     main.appendChild(breakEl);
   }
-  breakEl.hidden = false;
   if (!objectives().length) planObjectives();
   if (state.mode === 'run') saveRun(badgesThisRun());
+  // the morning after a promotion starts in the lift; its doors open onto the new floor (once per day)
+  const from = promotedFrom();
+  if (from && liftDay !== state.day) {
+    liftDay = state.day;
+    breakEl.hidden = true;
+    const to = floorTheme();
+    void elevatorRide(from.n, to.n, to.name, openDay);
+    return;
+  }
+  openDay();
+}
+
+let liftDay = 0;
+function openDay(): void {
+  if (!breakEl) return;
+  breakEl.hidden = false;
   // like the original: the day starts standing in the office. The whiteboard on the break-room wall has the day's
   // numbers; clocking in is walking to a free desk and pressing E (in co-op the host's seat clocks everyone in).
   // The dialog stays for a device without the 3-D office, or when "Skip the office walk" is on.
@@ -98,7 +116,7 @@ export function beginDay(): void {
     breakEl.hidden = true;
     whiteboardOff?.(); whiteboardOff = null;
     const m = todayMutator();
-    setWhiteboardLines([...(state.day >= FINALE_DAY ? ['☠ THE BUREAU RAIDS TONIGHT. HOLD THE FLOOR.'] : []), t('Day {d} — quota {q}', { d: state.day, q: fmt(state.quota) }), ...objectives().map((o) => `☐ ${o.def.text} +${fmt(o.def.reward)}`), m ? t('Tonight: {m}', { m: m.name }) : t('Clock in: any free desk, press E')]);
+    setWhiteboardLines([...(state.day >= FINALE_DAY ? ['☠ THE BUREAU RAIDS TONIGHT. HOLD THE FLOOR.'] : []), t('Day {d} — quota {q}', { d: state.day, q: fmt(state.quota) }), ...objectives().map((o) => `☐ ${t(o.def.text)} +${fmt(o.def.reward)}`), m ? t('Tonight: {m}', { m: m.name }) : t('Clock in: any free desk, press E')]);
     enterOffice(() => { if (coop.on) coop.sat(); else void startShift(); });
     toast(t('Day {d}. Quota {q}. Walk to a free desk and press E to clock in.', { d: state.day, q: fmt(state.quota) }), 'info', 6500);
     if (state.day === 1 && !coop.on) startFloorTutorial();
@@ -120,10 +138,10 @@ function renderWhiteboard(): void {
     <div class="overlay">
       <div class="whiteboard" role="dialog" aria-labelledby="wb-title">
         <h2 id="wb-title">${t('Daily targets — Day {d}', { d: state.day })}</h2>
-        ${co ? `<p class="whiteboard__room">Room ${esc(coop.code())} · ${names.length ? 'with ' + esc(names.join(', ')) : 'just you so far'}${coop.live ? '' : ' · reconnecting…'}</p>` : ''}
+        ${co ? `<p class="whiteboard__room">Room ${esc(shownCode(coop.code()))} · ${names.length ? 'with ' + esc(names.join(', ')) : 'just you so far'}${coop.live ? '' : ' · reconnecting…'}</p>` : ''}
         <ol>${targets.map((x) => `<li>${t(x)}</li>`).join('')}<li class="mark">${t("{q} or everyone's fired ☺", { q: fmt(state.quota) })}</li></ol>
         ${todayMutator() ? `<p class="wb-mutator">${t('Tonight:')} <b>${esc(todayMutator()!.name)}</b> — ${esc(todayMutator()!.blurb)} <span class="wb-reward">bonus ×${todayMutator()!.bonus}</span></p>` : ''}
-        ${objectives().length ? `<div class="wb-targets"><b>${t('Bonus targets (paid to you, not the team)')}</b><ul>${objectives().map((o) => `<li>${esc(o.def.text)} <span class="wb-reward">+${fmt(o.def.reward)}</span></li>`).join('')}</ul></div>` : ''}
+        ${objectives().length ? `<div class="wb-targets"><b>${t('Bonus targets (paid to you, not the team)')}</b><ul>${objectives().map((o) => `<li>${esc(t(o.def.text))} <span class="wb-reward">+${fmt(o.def.reward)}</span></li>`).join('')}</ul></div>` : ''}
         <div class="cluster" style="--cluster-space:.5rem">
           ${host ? `<button class="btn btn--big" data-clockin>${co ? t('Clock everyone in') : t('Clock in')}</button>` : `<button class="btn btn--big" data-clockin disabled>Waiting for ${esc(coop.hostName())} to clock everyone in…</button>`}
           ${officeAvailable() && !settings.skipFloor ? `<button class="btn btn--ghost" data-walk>${t('Walk the floor first')}</button>` : ''}
@@ -195,7 +213,8 @@ export async function startShift(): Promise<void> {
     if (getBrain().name !== 'live') { toast('Callers: built-in brain. Run `npm run brain` for live AI callers.', 'info', 6000); return; }
     if (settings.apiKey && settings.brain === 'claude') { toast('Callers: Claude, with your own key.', 'money', 4000); return; }
     const ok = await checkProxy();
-    toast(ok ? `Callers: ${providerLabel()} via the proxy${settings.model ? ` (${settings.model})` : ''}.` : 'Brain proxy not reachable — is `npm run brain` running? Using the built-in brain until it is.', ok ? 'money' : 'danger', 7000);
+    const model = ok ? modelLabel() : '';
+    toast(ok ? `Callers: ${providerLabel()} via the proxy${model ? ` (${model})` : ''}.` : 'Brain proxy not reachable — is `npm run brain` running? Using the built-in brain until it is.', ok ? 'money' : 'danger', 7000);
   })();
   lastSecond = -1;
   frameOff?.();
@@ -284,6 +303,8 @@ export async function endShift(): Promise<void> {
   disarmObjectives();
   stopTutorial();
   stopRival();
+  // Mr. Krull starts writing tonight's review from the transcripts while everyone walks to the room
+  startReviewRoast();
   await shiftOver();
   // like the original: walk to the meeting room with the colleagues (a cut in co-op, or with the walk skipped)
   if (officeAvailable() && !settings.skipFloor && !coop.live) await walkToReview();

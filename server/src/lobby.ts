@@ -49,6 +49,19 @@ export class Lobby extends DurableObject<Env> {
   }
   async scores(key: string): Promise<unknown[]> { return (await this.ctx.storage.get<unknown[]>('scores:' + key.slice(0, 32))) ?? []; }
 
+  /** saves that follow a player (save-sync.ts): one blob per sync code; an older write never replaces a newer one */
+  async putSave(code: string, at: number, data: string): Promise<{ ok: boolean; at: number }> {
+    const k = 'save:' + code;
+    const cur = await this.ctx.storage.get<{ at: number; data: string; seen: number }>(k);
+    if (cur && cur.at > at) return { ok: false, at: cur.at };
+    await this.ctx.storage.put(k, { at, data, seen: Date.now() });
+    return { ok: true, at };
+  }
+  async getSave(code: string): Promise<{ at: number; data: string } | null> {
+    const s = await this.ctx.storage.get<{ at: number; data: string; seen: number }>('save:' + code);
+    return s ? { at: s.at, data: s.data } : null;
+  }
+
   /** open rooms with a seat free, newest first */
   async list(): Promise<PublicRoom[]> {
     const rooms = await this.load();
