@@ -528,6 +528,9 @@ off (reload).
 ## Round 20 (28 Oct): the comparison with the original, fixed in order
 
 The comparison of 28 October ranked eleven gaps; all eleven are built, plus Family and Streamer mode.
+Deployed the same night from commit 34c7a85: the room server (version b724fba6), the brain proxy (6bf56847)
+and the site (Pages upload `4941de6c`). Checked live: a first visit with real clicks rings, the page is
+cross-origin isolated, the caller photos still load, and the brain reports speech-to-text.
 
 1. **The phone rings on a first visit.** A browser with no callers loads the Albanian pack at start-up
    (`ensureCallers` in `src/game/callers.ts`); the dialer waits for it and retries every 10 s if the
